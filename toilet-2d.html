@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Туалет за рубль</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
+html,body{margin:0;height:100%;overflow:hidden;background:#0f1316;
+  font-family:"Courier New",ui-monospace,Consolas,monospace;color:#fff;}
+#app{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;}
+.scaled{position:relative;overflow:hidden;}
+.scaled>.inner{position:absolute;left:0;top:0;transform-origin:0 0;}
+canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;}
+
+/* ---------- HUD ---------- */
+#topbar{width:480px;height:52px;display:flex;align-items:center;gap:8px;padding:4px 8px;
+  background:#1e2a30;border:3px solid #0a1013;}
+#topbar .sec{display:flex;flex-direction:column;justify-content:center;min-width:0;}
+#topbar .grow{flex:1;align-items:center;}
+.hud-money{font-size:15px;font-weight:bold;color:#ffe066;line-height:1.1;white-space:nowrap;}
+.hud-sub{font-size:9px;color:#9fb4bd;line-height:1.3;white-space:nowrap;}
+.hud-sub b{color:#d8e6ec;}
+.hearts{font-size:15px;letter-spacing:2px;color:#ff5c7a;line-height:1.1;text-align:right;}
+
+#bottombar{width:480px;height:30px;display:flex;align-items:center;gap:8px;padding:2px 8px;
+  background:#1e2a30;border:3px solid #0a1013;font-size:10px;color:#c2d4dc;}
+.cleanwrap{display:flex;align-items:center;gap:4px;}
+.cleanbar{width:90px;height:12px;border:2px solid #0a1013;background:#12191d;position:relative;}
+.cleanfill{position:absolute;left:0;top:0;bottom:0;width:100%;background:#5fdc9a;transition:width .15s;}
+#bottombar .sep{flex:1;text-align:right;color:#7d919a;font-size:9px;}
+
+/* ---------- overlay ---------- */
+#overlay,#worldui{position:absolute;left:0;top:0;width:480px;height:270px;}
+#worldui{pointer-events:none;}
+#overlay{pointer-events:none;}
+#overlay.active{pointer-events:auto;}
+
+.prompt{position:absolute;transform:translateX(-50%);white-space:nowrap;
+  background:#ffe066;color:#1a2226;font-size:9px;font-weight:bold;padding:2px 6px;
+  border:2px solid #0a1013;box-shadow:0 2px 0 #0a1013;}
+.toast{position:absolute;left:240px;top:108px;transform:translate(-50%,-50%);
+  white-space:nowrap;background:rgba(12,20,24,.92);border:2px solid #0a1013;padding:3px 8px;
+  font-size:11px;font-weight:bold;color:#fff;opacity:0;transition:opacity .18s;}
+.toast.show{opacity:1;}
+
+.modal{position:absolute;left:0;top:0;width:480px;height:270px;display:flex;align-items:center;
+  justify-content:center;background:rgba(6,10,12,.84);}
+.panel{background:#1e2a30;border:4px solid #0a1013;padding:9px 13px;min-width:250px;max-width:446px;
+  text-align:center;box-shadow:0 6px 0 rgba(0,0,0,.45);}
+.panel h1{font-size:21px;margin:0 0 2px;color:#ffe066;letter-spacing:1px;}
+.panel h2{font-size:15px;margin:0 0 7px;color:#ffd166;}
+.panel h3{font-size:12px;margin:0 0 6px;color:#9fe8ff;letter-spacing:2px;}
+.panel p{font-size:10px;line-height:1.45;color:#cfe0e8;margin:5px 0;}
+.panel .big{font-size:26px;color:#ffe066;font-weight:bold;}
+.btn{font-family:inherit;font-size:11px;font-weight:bold;padding:6px 12px;margin:3px;
+  background:#ffe066;color:#1a2226;border:3px solid #0a1013;box-shadow:0 3px 0 #a8862c;
+  cursor:pointer;display:inline-block;}
+.btn:active{transform:translateY(2px);box-shadow:0 1px 0 #a8862c;}
+.btn.alt{background:#5ac1e0;box-shadow:0 3px 0 #2f7d96;}
+.btn.dim{background:#5d7480;color:#e8f2f6;box-shadow:0 3px 0 #38494f;}
+.btn:disabled{opacity:.45;box-shadow:0 3px 0 #38494f;cursor:default;}
+
+.legend{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:6px 0;}
+.legend div{font-size:9px;color:#cfe0e8;background:#162126;border:2px solid #0a1013;padding:3px 6px;}
+
+.shopgrid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:6px 0;}
+.shopcard{text-align:left;background:#162126;border:3px solid #0a1013;color:#fff;font-family:inherit;
+  font-size:9px;padding:5px 6px;cursor:pointer;box-shadow:0 3px 0 #0a1013;}
+.shopcard:active{transform:translateY(2px);box-shadow:0 1px 0 #0a1013;}
+.shopcard b{display:block;color:#ffe066;font-size:10px;margin-bottom:2px;}
+.shopcard i{font-style:normal;color:#a8bcc4;display:block;}
+.shopcard u{text-decoration:none;color:#5fdc9a;font-weight:bold;display:block;margin-top:3px;}
+.shopcard.owned{border-color:#5fdc9a;opacity:.6;cursor:default;}
+.shopcard.poor u{color:#ff8b8b;}
+
+/* touch */
+.tbtn{position:absolute;pointer-events:auto;background:rgba(255,255,255,.16);border:2px solid rgba(255,255,255,.5);
+  color:#fff;font-size:15px;font-weight:bold;display:flex;align-items:center;justify-content:center;
+  width:34px;height:34px;border-radius:6px;}
+.tbtn:active{background:rgba(255,224,102,.5);}
+.tbtn.act{width:46px;height:34px;font-size:11px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="scaled" id="topwrap"><div class="inner" id="topbar">
+    <div class="sec">
+      <div class="hud-money" id="hud-money">0 ₽</div>
+      <div class="hud-sub" id="hud-combo">серия: 0</div>
+    </div>
+    <div class="sec grow">
+      <div class="hud-sub" id="hud-who">Смена 1 · посетителей: 0</div>
+      <div class="hud-sub" id="hud-queue">Очередь: 0</div>
+    </div>
+    <div class="sec">
+      <div class="hud-sub" id="hud-served">Обслужено 0/0</div>
+      <div class="hearts" id="hud-hearts">♥♥♥</div>
+    </div>
+  </div></div>
+
+  <div class="scaled" id="stagewrap"><div class="inner" id="screen">
+    <canvas id="c" width="480" height="270"></canvas>
+    <div id="worldui"></div>
+    <div id="overlay"></div>
+  </div></div>
+
+  <div class="scaled" id="botwrap"><div class="inner" id="bottombar">
+    <div class="cleanwrap">Чистота <div class="cleanbar"><div class="cleanfill" id="hud-cleanfill"></div></div></div>
+    <div class="sep" id="hud-hint">WASD — ходить · E — действие · R — прогнать · Q — проверить</div>
+  </div></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   ТУАЛЕТ ЗА РУБЛЬ — 2D пиксельная игра
+   Один сотрудник: пускать за рубль, гнать жуликов, убирать, улучшать.
+   Вся графика и звук — кодом. Внешних файлов нет.
+   ============================================================ */
+
+var W = 480, H = 270;
+var TOTAL_SHIFTS = 4;
+
+/* ---------- DOM ---------- */
+var cvs = document.getElementById('c');
+var ctx = cvs.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+var overlay = document.getElementById('overlay');
+var worldui = document.getElementById('worldui');
+var elMoney = document.getElementById('hud-money');
+var elCombo = document.getElementById('hud-combo');
+var elWho   = document.getElementById('hud-who');
+var elQueue = document.getElementById('hud-queue');
+var elServed= document.getElementById('hud-served');
+var elHearts= document.getElementById('hud-hearts');
+var elClean = document.getElementById('hud-cleanfill');
+var elHint  = document.getElementById('hud-hint');
+
+/* ---------- утилиты ---------- */
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function rnd(a,b){ return a+Math.random()*(b-a); }
+function irnd(a,b){ return Math.floor(rnd(a,b+1)); }
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+function shuffle(a){ for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+function inRect(x,y,r,pad){ pad=pad||0; return x>r.x-pad && x<r.x+r.w+pad && y>r.y-pad && y<r.y+r.h+pad; }
+function shade(hex,f){
+  var n=parseInt(hex.slice(1),16);
+  var r=Math.min(255,Math.round(((n>>16)&255)*f)), g=Math.min(255,Math.round(((n>>8)&255)*f)), b=Math.min(255,Math.round((n&255)*f));
+  return 'rgb('+r+','+g+','+b+')';
+}
+
+/* ---------- звук ---------- */
+var AC=null;
+function actx(){
+  if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ AC=false; } }
+  return AC;
+}
+function beep(freq,dur,type,vol,slide){
+  if(G.muted) return;
+  var a=actx(); if(!a) return;
+  try{
+    var o=a.createOscillator(), g=a.createGain();
+    o.type=type||'square'; o.frequency.setValueAtTime(freq,a.currentTime);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(40,freq+slide),a.currentTime+dur);
+    g.gain.setValueAtTime(vol||0.05,a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+dur);
+    o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+dur);
+  }catch(e){}
+}
+var SFX={
+  click:function(){ beep(500,0.05,'square',0.04); },
+  coin: function(){ beep(900,0.05,'square',0.045); setTimeout(function(){beep(1350,0.11,'square',0.045);},60); },
+  good: function(){ beep(660,0.07,'square',0.05); setTimeout(function(){beep(990,0.11,'square',0.05);},70); },
+  bad:  function(){ beep(170,0.17,'sawtooth',0.05,-70); },
+  scrub:function(){ beep(240,0.04,'sawtooth',0.03); },
+  plunge:function(){ beep(140,0.09,'square',0.05,-40); },
+  alarm:function(){ beep(400,0.1,'sawtooth',0.05,-160); setTimeout(function(){beep(300,0.16,'sawtooth',0.05,-100);},90); },
+  arrive:function(){ beep(720,0.06,'triangle',0.03); },
+  buy:  function(){ beep(600,0.06,'square',0.05); setTimeout(function(){beep(900,0.06,'square',0.05);},60); setTimeout(function(){beep(1200,0.13,'square',0.05);},120); }
+};
+
+/* ============================================================
+   ГЕОМЕТРИЯ
+   ============================================================ */
+var WALL = 12;
+var ROOM = {x0:WALL, y0:WALL, x1:W-WALL, y1:H-WALL};
+var DOOR = {x0:216, x1:264};
+
+var OBST = [
+  {x:64,  y:12, w:60, h:46, type:'stall', ti:0},
+  {x:164, y:12, w:60, h:46, type:'stall', ti:1},
+  {x:264, y:12, w:60, h:46, type:'stall', ti:2},
+  {x:432, y:92,  w:30, h:26, type:'sink'},
+  {x:432, y:142, w:30, h:26, type:'sink'},
+  {x:432, y:192, w:30, h:26, type:'sink'},
+  {x:298, y:220, w:74, h:26, type:'desk'},
+  {x:388, y:224, w:24, h:22, type:'bin'},
+  {x:16,  y:212, w:26, h:28, type:'plant'}
+];
+function toiletCX(i){ return OBST[i].x + OBST[i].w/2; }
+function toiletFront(i){ return {x:toiletCX(i), y:OBST[i].y+OBST[i].h+14}; }
+
+/* точки на полу для грязи */
+var FLOOR_PTS = (function(){
+  var pts=[];
+  for(var y=26;y<=242;y+=13){
+    for(var x=26;x<=452;x+=13){
+      var bad=false;
+      for(var i=0;i<OBST.length;i++){ if(inRect(x,y,OBST[i],10)){ bad=true; break; } }
+      if(!bad) pts.push([x,y]);
+    }
+  }
+  return pts;
+})();
+function randFloorPt(){
+  for(var k=0;k<40;k++){
+    var p=pick(FLOOR_PTS);
+    if(Math.hypot(p[0]-G.player.x, p[1]-G.player.y)<26) continue;
+    return {x:p[0], y:p[1]};
+  }
+  var q=pick(FLOOR_PTS); return {x:q[0], y:q[1]};
+}
+
+var QUEUE_POS = [[240,238],[186,238],[132,238],[78,238]];
+var SPAWN_POS = {x:240, y:278};
+
+/* ---------- посетители: внешность ---------- */
+var SKIN  = ['#f2c49a','#e8b088','#c98a5b','#8d5a3a','#f7d6b0'];
+var SHIRT = ['#d94f4f','#4f7fd9','#4fb06a','#d9a34f','#8a4fd9','#d94f9a','#4fc7d9','#7a7a86'];
+var PANTS = ['#3a4a6a','#4a3a2a','#2f3a46','#5a4a6a','#3a5a4a'];
+var HAIR  = ['#2a1a12','#5a3a1a','#c9a24f','#7a2a2a','#1a1a1a','#9a9a9a'];
+
+/* ---------- признаки ---------- */
+var TRAITS = {
+  coin:  {name:'рубль',    bad:false},
+  mask:  {name:'маска',    bad:true },
+  crow:  {name:'лом',      bad:true },
+  spray: {name:'баллончик',bad:true },
+  bag:   {name:'мешок',    bad:false},
+  phone: {name:'телефон',  bad:false},
+  gloves:{name:'перчатки', bad:false}
+};
+
+/* ---------- улучшения ---------- */
+var UPGRADES = [
+  {id:'mop',    name:'Новая швабра',   desc:'Уборка на 30% быстрее',            cost:8,  apply:function(){ G.mods.clean*=0.7; G.visual.mop=true; }},
+  {id:'fresh',  name:'Освежитель',     desc:'Грязь появляется реже на 30%',     cost:10, apply:function(){ G.mods.dirtEvery*=1.4; G.visual.fresh=true; }},
+  {id:'mirror', name:'Зеркало',        desc:'Посетители ждут на 25% дольше',    cost:10, apply:function(){ G.mods.patience*=1.25; G.visual.mirror=true; }},
+  {id:'locks',  name:'Крепкие засовы', desc:'Унитазы засоряются на 40% реже',   cost:12, apply:function(){ G.mods.clogEvery*=1.7; G.visual.locks=true; }},
+  {id:'tiles',  name:'Новый кафель',   desc:'Чистота падает на 30% медленнее',  cost:12, apply:function(){ G.mods.dirtDrain*=0.7; G.visual.tiles=true; }},
+  {id:'detect', name:'Детектор монет', desc:'Проверка вдвое быстрее',           cost:14, apply:function(){ G.mods.check*=0.5; }},
+  {id:'camera', name:'Камера',         desc:'Жулики вредят на 50% меньше',      cost:16, apply:function(){ G.mods.mischief*=0.5; G.visual.camera=true; }},
+  {id:'cash',   name:'Новая касса',    desc:'+1 ₽ за каждого гостя',            cost:18, apply:function(){ G.mods.pay+=1; }}
+];
+
+/* ============================================================
+   СОСТОЯНИЕ
+   ============================================================ */
+var CID = 0;
+var G = {
+  state:'menu',
+  shift:1, money:0, hearts:3, served:0, target:0, combo:0, bestCombo:0,
+  clean:100, dirty:0,
+  queue:[], inside:[], dirts:[], floats:[],
+  toilets:[{clogged:false,user:null,puddleT:0,prog:0},{clogged:false,user:null,puddleT:0,prog:0},{clogged:false,user:null,puddleT:0,prog:0}],
+  player:{x:240, y:200, dir:'down', anim:0, moving:false},
+  cfg:null, spawnT:0, dirtT:0, clogT:0, pool:[],
+  targetType:null, targetRef:null, targetDist:999,
+  mods:{walk:1, clean:1, dirtEvery:1, patience:1, clogEvery:1, dirtDrain:1, check:1, pay:1, mischief:1},
+  visual:{mop:false, fresh:false, mirror:false, locks:false, tiles:false, camera:false},
+  taken:[], muted:false, t:0, toastT:0, checkBusy:0, prevState:'play'
+};
+
+function shiftCfg(s){
+  return {
+    normals:    [0,6,8,10,12][clamp(s,0,4)],
+    hooligans:  [0,3,5,7,9][clamp(s,0,4)],
+    patience:   Math.max(8, 14-s),
+    spawnEvery: Math.max(3.0, 5.4-s*0.8),
+    dirtEvery:  Math.max(2.2, 5.0-s*0.8),
+    clogEvery:  Math.max(5, 13-s*2),
+    maxDirts:   Math.min(9, 5+s)
+  };
+}
+
+/* ============================================================
+   ПОСЕТИТЕЛИ
+   ============================================================ */
+function makeVisitor(kind){
+  var v={
+    id:++CID, kind:kind, checked:false, checking:0,
+    traits:[], hidden:[], revealed:false,
+    patience:0, maxPatience:0,
+    x:SPAWN_POS.x, y:SPAWN_POS.y, tx:QUEUE_POS[0][0], ty:QUEUE_POS[0][1],
+    state:'queue', bob:rnd(0,6.28), anim:0, moving:true,
+    toilet:-1, useT:0, mischiefT:0, mischiefN:0, alarmed:false,
+    skin:pick(SKIN), shirt:pick(SHIRT), pants:pick(PANTS), hair:pick(HAIR),
+    hat:Math.random()<0.3, bag:false
+  };
+  if(kind==='normal'){
+    v.traits.push('coin');
+    if(Math.random()<0.28){ v.traits.push('bag'); v.bag=true; }
+    else if(Math.random()<0.4){ v.traits.push('phone'); }
+  }else{
+    var r=Math.random();
+    if(r<0.45){ v.traits.push(pick(['mask','crow','spray'])); }
+    else if(r<0.70){ v.traits.push('coin'); }   // фальшивый рубль
+    else { /* ничего */ }
+    v.hidden=['hooligan'];
+  }
+  v.maxPatience = v.patience = 0; // выставим при старте смены
+  return v;
+}
+function traitBad(v){
+  for(var i=0;i<v.traits.length;i++) if(TRAITS[v.traits[i]].bad) return true;
+  return false;
+}
+
+/* ============================================================
+   ЛОГИКА СМЕНЫ
+   ============================================================ */
+function startShift(){
+  var c=G.cfg=shiftCfg(G.shift);
+  G.served=0; G.target=c.normals;
+  G.queue=[]; G.inside=[]; G.dirts=[]; G.floats=[];
+  G.clean=100; G.dirty=0; G.combo=0;
+  G.spawnT=1.0; G.dirtT=2.0; G.clogT=c.clogEvery;
+  G.pool=[];
+  var i;
+  for(i=0;i<c.normals;i++) G.pool.push('normal');
+  for(i=0;i<c.hooligans;i++) G.pool.push('hooligan');
+  shuffle(G.pool);
+  G.toilets=[];
+  for(i=0;i<3;i++) G.toilets.push({clogged:false, user:null, puddleT:0, prog:0});
+  G.player.x=240; G.player.y=200; G.player.dir='down';
+  spawnVisitor();          // первый посетитель ждёт у входа
+  G.state='play';
+  closeModal();
+  toast('Смена '+G.shift+'! Пропустите '+G.target+' человек за ₽','#9fe8ff');
+  updateHUD();
+}
+function spawnVisitor(){
+  if(!G.pool.length) return;
+  if(G.queue.length>=4) return;
+  var kind=G.pool.shift();
+  var v=makeVisitor(kind);
+  v.maxPatience = v.patience = G.cfg.patience*G.mods.patience*rnd(0.85,1.15);
+  v.tx=QUEUE_POS[Math.min(G.queue.length,3)][0];
+  v.ty=QUEUE_POS[Math.min(G.queue.length,3)][1];
+  G.queue.push(v);
+  SFX.arrive();
+}
+function updateQueuePositions(){
+  for(var i=0;i<G.queue.length;i++){
+    var v=G.queue[i], p=QUEUE_POS[Math.min(i,3)];
+    v.tx=p[0]; v.ty=p[1];
+  }
+}
+function frontVisitor(){ return G.queue.length?G.queue[0]:null; }
+
+/* ---------- решения ---------- */
+function acceptFront(){
+  var v=frontVisitor(); if(!v) return;
+  G.queue.shift(); updateQueuePositions();
+  v.state='inside'; v.toilet=-1; v.useT=0; v.mischiefT=1.0; v.mischiefN=0;
+  v.traits=v.traits; // визуально остаётся
+  G.inside.push(v);
+  if(v.kind==='normal'){
+    var pay=G.mods.pay;
+    G.money+=pay; G.served++; G.combo++; G.bestCombo=Math.max(G.bestCombo,G.combo);
+    SFX.coin(); addFloat(240,140,'+'+pay+' ₽','#ffe066');
+    if(G.combo>0 && G.combo%5===0){ G.money+=5; toast('Чаевые за серию! +5 ₽','#ffe066'); }
+    var t=findToilet();
+    if(t>=0){ G.toilets[t].user=v; v.toilet=t; v.tx=toiletFront(t).x; v.ty=toiletFront(t).y; }
+    else { v.tx=300; v.ty=200; }   // все заняты — подождёт внутри
+  }else{
+    toast('Это жулик! Выставьте его (E)','#ff8b8b');
+    v.tx=pick([120,200,320,400]); v.ty=120;
+    addFloat(240,140,'жулик!','#ff8b8b');
+    SFX.alarm();
+  }
+  updateHUD();
+}
+function rejectFront(){
+  var v=frontVisitor(); if(!v) return;
+  G.queue.shift(); updateQueuePositions();
+  v.state='out'; v.leaving=true;
+  v.tx=SPAWN_POS.x; v.ty=SPAWN_POS.y+40;
+  G.inside.push(v);
+  if(v.kind==='hooligan'){
+    G.combo++;
+    SFX.good(); toast('Жулик прогнан!','#7ef07e');
+    addFloat(240,140,'+ серия','#7ef07e');
+  }else{
+    G.hearts--; G.combo=0;
+    SFX.bad(); toast('Вы прогнали обычного человека! -1 ♥','#ff8b8b');
+    if(G.hearts<=0){ gameOver(); return; }
+  }
+  updateHUD();
+}
+function checkFront(){
+  var v=frontVisitor(); if(!v) return;
+  if(v.checked||v.checking>0) return;
+  v.checking=0.9*G.mods.check;
+  SFX.click();
+}
+function ejectHooligan(v){
+  v.state='out'; v.leaving=true;
+  v.tx=SPAWN_POS.x; v.ty=SPAWN_POS.y+40;
+  G.combo++;
+  SFX.good(); toast('Жулик выставлен!','#7ef07e');
+  addFloat(v.x, v.y-30, '+ серия','#7ef07e');
+  updateHUD();
+}
+function findToilet(){
+  for(var i=0;i<3;i++){ if(!G.toilets[i].clogged && !G.toilets[i].user) return i; }
+  return -1;
+}
+
+/* ---------- грязь ---------- */
+var DIRT_DEF={
+  trash:  {need:0.5, name:'мусор'},
+  stain:  {need:1.1, name:'пятно'},
+  puddle: {need:1.0, name:'лужа'},
+  paint:  {need:1.8, name:'мазня'}
+};
+function addDirt(x,y,type){
+  if(G.dirts.length>=G.cfg.maxDirts+3) return;
+  G.dirts.push({x:x, y:y, type:type||pick(['stain','trash','puddle']), prog:0, wob:rnd(0,6.28)});
+}
+function cleanDirt(d){
+  G.clean=Math.min(100, G.clean+7);
+  SFX.good();
+}
+function clutter(){
+  var d=G.dirts.length;
+  G.clean=Math.max(0, G.clean - d*0.85*G.mods.dirtDrain*G.dt);
+  if(G.clean<=0){
+    G.hearts--; G.clean=45; G.combo=0;
+    SFX.alarm(); toast('Туалет утонул в грязи! -1 ♥','#ff8b8b');
+    if(G.hearts<=0){ gameOver(); }
+  }
+}
+function clogToilet(i){
+  var t=G.toilets[i];
+  if(t.clogged || t.user) return;   // не засоряем занятый унитаз
+  t.clogged=true; t.puddleT=0;
+  SFX.alarm();
+  toast('Унитаз '+ (i+1) +' засорился!','#ffd166');
+}
+
+/* ---------- обновление посетителей ---------- */
+function moveToward(o,dt,sp){
+  var dx=o.tx-o.x, dy=o.ty-o.y, d=Math.hypot(dx,dy);
+  if(d<1.2){ o.x=o.tx; o.y=o.ty; o.moving=false; return true; }
+  var s=Math.min(d, sp*dt);
+  o.x+=dx/d*s; o.y+=dy/d*s;
+  o.anim+=dt*10; o.moving=true;
+  if(Math.abs(dx)>Math.abs(dy)) o.dir=dx<0?'left':'right'; else o.dir=dy<0?'up':'down';
+  return false;
+}
+function updateVisitors(dt){
+  // очередь
+  for(var i=G.queue.length-1;i>=0;i--){
+    var v=G.queue[i];
+    moveToward(v,dt,46);
+    v.patience -= dt*(i===0?1:0.55);
+    if(v.checking>0){
+      v.checking-=dt;
+      v.patience -= dt*0.8;
+      if(v.checking<=0){ v.checking=0; v.checked=true; v.revealed=true; SFX.click(); }
+    }
+    if(v.patience<=0){
+      G.queue.splice(i,1); updateQueuePositions();
+      v.state='out'; v.leaving=true; v.tx=SPAWN_POS.x; v.ty=SPAWN_POS.y+40;
+      G.inside.push(v);
+      if(v.kind==='normal'){
+        G.hearts--; G.combo=0;
+        SFX.bad();
+        toast('Посетитель не дождался! -1 ♥','#ff8b8b');
+        if(G.hearts<=0){ gameOver(); return; }
+      }else{
+        toast('Жулик ушёл сам','#9fe8ff');
+      }
+      updateHUD();
+    }
+  }
+  updateQueuePositions();
+
+  // внутри
+  for(var j=G.inside.length-1;j>=0;j--){
+    var u=G.inside[j];
+    if(u.state==='out'){
+      if(moveToward(u,dt,52)){ G.inside.splice(j,1); }
+      continue;
+    }
+    if(u.kind==='hooligan'){
+      // жулик хулиганит
+      u.mischiefT-=dt;
+      if(u.mischiefT<=0){
+        u.mischiefT=1.5*G.mods.mischief;
+        u.mischiefN++;
+        doMischief(u);
+        if(u.mischiefN>=4 || (u.ejected)){ u.state='out'; u.tx=SPAWN_POS.x; u.ty=SPAWN_POS.y+40; }
+        else { u.tx=pick([110,200,300,400]); u.ty=pick([90,150,200]); }
+      }
+      moveToward(u,dt,58);
+      continue;
+    }
+    // обычный посетитель
+    if(u.toilet<0){
+      var t=findToilet();
+      if(t>=0){ G.toilets[t].user=u; u.toilet=t; u.tx=toiletFront(t).x; u.ty=toiletFront(t).y; }
+    }
+    if(u.toilet>=0 && !G.toilets[u.toilet].clogged){
+      if(moveToward(u,dt,46)){
+        u.useT+=dt;
+        if(u.useT>3.2){
+          G.toilets[u.toilet].user=null;
+          if(Math.random()<0.22) addDirt(toiletFront(u.toilet).x+rnd(-10,10), toiletFront(u.toilet).y+rnd(0,14),'puddle');
+          u.state='out'; u.toilet=-1;
+          u.tx=SPAWN_POS.x; u.ty=SPAWN_POS.y+40;
+          if(Math.random()<0.22) addDirt(u.x+rnd(-8,8), u.y+rnd(-8,8), pick(['stain','trash']));
+        }
+      }
+    }else{
+      // все заняты или засорено — ждёт, но терпит вдвое дольше
+      u.patience-=dt*0.5;
+      if(u.patience<=0){
+        G.toilets[u.toilet]&&(G.toilets[u.toilet].user=null);
+        G.hearts--; G.combo=0;
+        SFX.bad(); toast('Не дождался свободного места! -1 ♥','#ff8b8b');
+        u.state='out'; u.tx=SPAWN_POS.x; u.ty=SPAWN_POS.y+40;
+        if(G.hearts<=0){ gameOver(); return; }
+      }
+    }
+  }
+}
+function doMischief(v){
+  if(Math.random() < (1-G.mods.mischief)){ SFX.click(); addFloat(v.x, v.y-30, 'камера следит!','#9fe8ff'); return; }
+  var kinds=['steal','mess','mess','clog','paint'];
+  var k=pick(kinds);
+  if(k==='steal'){
+    var amt=Math.min(G.mods.mischief<1?1:2, G.money);
+    if(amt>0){ G.money-=amt; addFloat(v.x, v.y-30, '-'+amt+' ₽','#ff8b8b'); toast('Жулик украл деньги!','#ff8b8b'); }
+    else { addFloat(v.x, v.y-30, 'пусто','#a8bcc4'); }
+  }else if(k==='mess'){
+    addDirt(v.x+rnd(-14,14), v.y+rnd(-10,14), pick(['stain','trash','puddle']));
+    addFloat(v.x, v.y-30, 'мусор!','#ffd166');
+  }else if(k==='clog'){
+    var free=[]; for(var i=0;i<3;i++) if(!G.toilets[i].clogged) free.push(i);
+    if(free.length) clogToilet(pick(free));
+  }else if(k==='paint'){
+    addDirt(clamp(v.x+rnd(-16,16),26,452), clamp(v.y+rnd(-16,16),26,242),'paint');
+    addFloat(v.x, v.y-30, 'мазня!','#ff8b8b');
+  }
+  SFX.alarm();
+}
+
+/* ---------- чистота / таймеры ---------- */
+function updateRoom(dt){
+  G.dt=dt;
+  if(G.pool.length && G.queue.length<4){
+    G.spawnT-=dt;
+    if(G.spawnT<=0){ spawnVisitor(); G.spawnT=G.cfg.spawnEvery*rnd(0.8,1.25); }
+  }
+  G.dirtT-=dt;
+  if(G.dirtT<=0){
+    G.dirtT=G.cfg.dirtEvery*G.mods.dirtEvery*rnd(0.7,1.3);
+    if(G.dirts.length<G.cfg.maxDirts) addDirt(randFloorPt().x, randFloorPt().y);
+  }
+  G.clogT-=dt;
+  if(G.clogT<=0){
+    G.clogT=G.cfg.clogEvery*G.mods.clogEvery*rnd(0.8,1.3);
+    var free=[]; for(var i=0;i<3;i++) if(!G.toilets[i].clogged) free.push(i);
+    if(free.length && G.shift>=2) clogToilet(pick(free));
+  }
+  // лужи из засорённых унитазов
+  for(var t=0;t<3;t++){
+    if(G.toilets[t].clogged){
+      G.toilets[t].puddleT-=dt;
+      if(G.toilets[t].puddleT<=0){
+        G.toilets[t].puddleT=rnd(3.5,6);
+        addDirt(toiletFront(t).x+rnd(-16,16), toiletFront(t).y+rnd(0,16),'puddle');
+      }
+    }
+  }
+  clutter();
+
+  // конец смены: пул пуст, очередь пуста, внутри пусто
+  if(!G.pool.length && !G.queue.length && !G.inside.length && G.state==='play'){
+    endShift();
+  }
+}
+
+/* ---------- цели взаимодействия ---------- */
+function updateTarget(){
+  var p=G.player, best=null, bd=1e9;
+  function consider(type, ref, x, y, r){
+    var d=Math.hypot(p.x-x,p.y-y);
+    if(d<r && d<bd){ bd=d; best={type:type, ref:ref, dist:d}; }
+  }
+  var f=frontVisitor();
+  if(f) consider('front', f, f.x, f.y, 40);
+  for(var i=0;i<G.dirts.length;i++){
+    var d=G.dirts[i]; consider('dirt', d, d.x, d.y, 28);
+  }
+  for(var t=0;t<3;t++){
+    if(G.toilets[t].clogged){ var fp=toiletFront(t); consider('clog', t, fp.x, fp.y, 36); }
+  }
+  for(var k=0;k<G.inside.length;k++){
+    var u=G.inside[k];
+    if(u.kind==='hooligan' && u.state!=='out') consider('thug', u, u.x, u.y, 30);
+  }
+  G.targetType = best?best.type:null;
+  G.targetRef  = best?best.ref:null;
+  G.targetDist = best?best.dist:999;
+}
+
+/* ---------- действия ---------- */
+function doAction(){
+  if(G.state!=='play') return;
+  updateTarget();
+  if(G.targetType==='front') acceptFront();
+  else if(G.targetType==='thug') ejectHooligan(G.targetRef);
+}
+function holdAction(dt){
+  if(G.state!=='play') return;
+  if(!keys['e']) return;
+  if(G.targetType==='dirt'){
+    var d=G.targetRef;
+    d.prog += dt/(DIRT_DEF[d.type].need*G.mods.clean);
+    if(Math.random()<0.25) SFX.scrub();
+    if(d.prog>=1){
+      var idx=G.dirts.indexOf(d);
+      if(idx>=0){ G.dirts.splice(idx,1); cleanDirt(d); addFloat(d.x,d.y-14,'чисто','#7ef07e'); }
+    }
+  }else if(G.targetType==='clog'){
+    var t=G.toilets[G.targetRef];
+    t.prog=(t.prog||0)+dt/(1.6*G.mods.clean);
+    if(Math.random()<0.3) SFX.plunge();
+    if(t.prog>=1){ t.clogged=false; t.prog=0; SFX.good(); toast('Унитаз прочищен!','#7ef07e'); addFloat(toiletFront(G.targetRef).x, toiletFront(G.targetRef).y-16,'чисто','#7ef07e'); }
+  }
+}
+
+/* ---------- ввод ---------- */
+var keys={};
+function keyId(e){
+  if(e.code){
+    if(e.code==='Space') return 'space';
+    if(e.code==='Escape') return 'escape';
+    if(e.code==='ArrowUp') return 'arrowup';
+    if(e.code==='ArrowDown') return 'arrowdown';
+    if(e.code==='ArrowLeft') return 'arrowleft';
+    if(e.code==='ArrowRight') return 'arrowright';
+    if(e.code.indexOf('Key')===0) return e.code.slice(3).toLowerCase();
+    if(e.code.indexOf('Digit')===0) return e.code.slice(5).toLowerCase();
+    if(e.code.indexOf('Numpad')===0) return e.code.slice(6).toLowerCase();
+  }
+  var k=(e.key||'').toLowerCase();
+  if(k===' ') k='space';
+  return k;
+}
+document.addEventListener('keydown',function(e){
+  var k=keyId(e);
+  if(k==='escape'){
+    e.preventDefault();
+    if(G.state==='play'){ G.prevState='play'; G.state='pause'; showPause(); }
+    else if(G.state==='pause'){ G.state='play'; closeModal(); }
+    return;
+  }
+  if(G.state==='play'){
+    if(k==='e'){ e.preventDefault(); keys['e']=true; if(!e.repeat) doAction(); return; }
+    if(k==='space'){ e.preventDefault(); if(!e.repeat) doAction(); return; }
+    if(k==='r'){ e.preventDefault(); if(!e.repeat) rejectFront(); return; }
+    if(k==='q'){ e.preventDefault(); if(!e.repeat) checkFront(); return; }
+  }
+  if(['arrowup','arrowdown','arrowleft','arrowright'].indexOf(k)>=0) e.preventDefault();
+  keys[k]=true;
+},false);
+document.addEventListener('keyup',function(e){
+  var k=keyId(e);
+  keys[k]=false;
+  if(['arrowup','arrowdown','arrowleft','arrowright','space'].indexOf(k)>=0) e.preventDefault();
+},false);
+window.addEventListener('blur',function(){ keys={}; });
+
+/* ---------- тач ---------- */
+var touch={active:false, dx:0, dy:0};
+(function initTouch(){
+  if(!('ontouchstart' in window)) return;
+  var wrap=document.createElement('div');
+  var layout=[
+    {k:'up',   x:52, y:186, t:'▲'},
+    {k:'left', x:16, y:220, t:'◀'},
+    {k:'down', x:52, y:222, t:'▼'},
+    {k:'right',x:88, y:220, t:'▶'}
+  ];
+  layout.forEach(function(b){
+    var el=document.createElement('div');
+    el.className='tbtn'; el.textContent=b.t;
+    el.style.left=b.x+'px'; el.style.top=(b.y-32)+'px';
+    el.addEventListener('pointerdown',function(ev){ ev.preventDefault(); touch.keys=touch.keys||{}; touch.keys[b.k]=true; sync(); },{passive:false});
+    el.addEventListener('pointerup',function(ev){ ev.preventDefault(); touch.keys[b.k]=false; sync(); },{passive:false});
+    el.addEventListener('pointerleave',function(){ touch.keys[b.k]=false; sync(); });
+    wrap.appendChild(el);
+  });
+  function act(label,code,x,y,w){
+    var el=document.createElement('div');
+    el.className='tbtn act'; el.textContent=label;
+    el.style.left=x+'px'; el.style.top=y+'px'; if(w) el.style.width=w+'px';
+    el.addEventListener('pointerdown',function(ev){
+      ev.preventDefault();
+      if(G.state!=='play') return;
+      if(code==='e') doAction();
+      else if(code==='r') rejectFront();
+      else if(code==='q') checkFront();
+    },{passive:false});
+    wrap.appendChild(el);
+    return el;
+  }
+  act('ДЕЙСТВ.','e', 340, 216, 56);
+  act('ГНАТЬ','r', 402, 216, 56);
+  act('ПРОВЕР.','q', 340, 176, 56);
+  var holdBtn=document.createElement('div');
+  holdBtn.className='tbtn act'; holdBtn.textContent='УБРАТЬ';
+  holdBtn.style.left='402px'; holdBtn.style.top='176px'; holdBtn.style.width='56px';
+  holdBtn.addEventListener('pointerdown',function(ev){ ev.preventDefault(); touch.holdE=true; keys['e']=true; },{passive:false});
+  holdBtn.addEventListener('pointerup',function(ev){ ev.preventDefault(); touch.holdE=false; keys['e']=false; },{passive:false});
+  holdBtn.addEventListener('pointerleave',function(){ touch.holdE=false; keys['e']=false; });
+  wrap.appendChild(holdBtn);
+  worldui.appendChild(wrap);
+  function sync(){
+    var tk=touch.keys||{};
+    touch.dx=(tk.right?1:0)-(tk.left?1:0);
+    touch.dy=(tk.down?1:0)-(tk.up?1:0);
+    touch.active=!!(touch.dx||touch.dy);
+  }
+})();
+
+/* ---------- столкновения ---------- */
+function collide(p){
+  p.x=clamp(p.x, ROOM.x0+8, ROOM.x1-8);
+  p.y=clamp(p.y, ROOM.y0+8, ROOM.y1-8);
+  for(var i=0;i<OBST.length;i++){
+    var r=OBST[i];
+    var x0=r.x-8, x1=r.x+r.w+8, y0=r.y-8, y1=r.y+r.h+8;
+    if(p.x>x0&&p.x<x1&&p.y>y0&&p.y<y1){
+      var dl=Math.abs(p.x-x0), dr=Math.abs(x1-p.x), du=Math.abs(p.y-y0), dd=Math.abs(y1-p.y);
+      var m=Math.min(dl,dr,du,dd);
+      if(m===dl) p.x=x0; else if(m===dr) p.x=x1;
+      else if(m===du) p.y=y0; else p.y=y1;
+      p.x=clamp(p.x, ROOM.x0+8, ROOM.x1-8);
+      p.y=clamp(p.y, ROOM.y0+8, ROOM.y1-8);
+    }
+  }
+}
+function updatePlay(dt){
+  var p=G.player, ax=0, ay=0;
+  if(keys['a']||keys['arrowleft']) ax--;
+  if(keys['d']||keys['arrowright']) ax++;
+  if(keys['w']||keys['arrowup']) ay--;
+  if(keys['s']||keys['arrowdown']) ay++;
+  if(touch.active){ ax+=touch.dx; ay+=touch.dy; }
+  var len=Math.hypot(ax,ay);
+  if(len>0.01){
+    ax/=len; ay/=len;
+    var sp=92*G.mods.walk;
+    p.x+=ax*sp*dt; p.y+=ay*sp*dt;
+    p.anim+=dt*11; p.moving=true;
+    if(Math.abs(ax)>Math.abs(ay)) p.dir=ax<0?'left':'right'; else p.dir=ay<0?'up':'down';
+  }else p.moving=false;
+  collide(p);
+  updateTarget();
+  holdAction(dt);
+}
+
+/* ============================================================
+   ОТРИСОВКА
+   ============================================================ */
+function px(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w,h); }
+function tiles(x0,y0,x1,y1,s,c1,c2){
+  for(var y=y0;y<y1;y+=s){
+    for(var x=x0;x<x1;x+=s){
+      var i=((x/s|0)+(y/s|0))%2;
+      ctx.fillStyle=i?c1:c2;
+      ctx.fillRect(x,y,Math.min(s,x1-x),Math.min(s,y1-y));
+    }
+  }
+}
+
+function drawScene(){
+  var clean=G.visual.tiles;
+  // пол
+  if(clean) tiles(ROOM.x0,ROOM.y0,ROOM.x1,ROOM.y1,20,'#93a9b6','#89a0ae');
+  else      tiles(ROOM.x0,ROOM.y0,ROOM.x1,ROOM.y1,20,'#6e737a','#666b72');
+  // грязный оттенок от нечистоты
+  var grime=clamp(1-G.clean/100,0,1);
+  if(grime>0.05){ ctx.fillStyle='rgba(70,60,40,'+(grime*0.28).toFixed(3)+')'; ctx.fillRect(ROOM.x0,ROOM.y0,ROOM.x1-ROOM.x0,ROOM.y1-ROOM.y0); }
+
+  // стены
+  var wc=clean?'#c9d6de':'#8d949b', wd=clean?'#a7b6c0':'#6e757c';
+  px(0,0,W,WALL+2,wc); px(0,0,WALL+2,H,wc); px(W-WALL-2,0,WALL+2,H,wc); px(0,H-WALL-2,W,WALL+2,wc);
+  px(0,WALL,W,3,wd); px(WALL,0,3,H-2*WALL,wd); px(W-WALL-3,WALL,3,H-2*WALL,wd); px(WALL,H-WALL-3,W-2*WALL,3,wd);
+  // дверь
+  px(DOOR.x0,W-WALL-2,DOOR.x1-DOOR.x0,WALL+2,'#3a4a54');
+  px(DOOR.x0+2,W-WALL,DOOR.x1-DOOR.x0-4,WALL,'#2a363e');
+  ctx.fillStyle='#9fb4bd'; ctx.font='bold 8px "Courier New",monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('ВХОД', (DOOR.x0+DOOR.x1)/2, H-6);
+
+  drawFurniture(clean);
+  drawDirts();
+  drawPeople();
+  drawPlayer();
+  drawFloats();
+  drawPrompts();
+}
+
+function drawFurniture(clean){
+  var i;
+  // кабинки + унитазы
+  for(i=0;i<3;i++){
+    var r=OBST[i], t=G.toilets[i];
+    px(r.x+3, r.y+r.h-2, r.w, 6, 'rgba(0,0,0,0.25)');
+    var body=clean?'#dfe9ef':'#c3ccd3', edge=clean?'#b9c9d4':'#9aa4ab';
+    px(r.x, r.y, r.w, r.h, body);
+    px(r.x, r.y, r.w, 5, edge);
+    px(r.x, r.y+r.h-8, r.w, 8, edge);
+    ctx.strokeStyle='#5a646c'; ctx.lineWidth=2; ctx.strokeRect(r.x+1,r.y+1,r.w-2,r.h-2);
+    // дверца
+    px(r.x+6, r.y+16, r.w-12, r.h-22, clean?'#cfdde6':'#aeb8c0');
+    ctx.strokeStyle='#7d8890'; ctx.strokeRect(r.x+6, r.y+16, r.w-12, r.h-22);
+    if(G.visual.locks){ px(r.x+r.w/2-5, r.y+26, 10, 6, '#8d99a3'); px(r.x+r.w/2-1, r.y+28, 2, 3, '#4a545c'); }
+    // унитаз виден сверху
+    px(r.x+r.w/2-9, r.y+8, 18, 8, '#f2f6f8');
+    px(r.x+r.w/2-6, r.y+7, 12, 5, '#ffffff');
+    if(t.clogged){
+      px(r.x+r.w/2-7, r.y+9, 14, 5, '#7a5a3a');
+      px(r.x+r.w/2-2, r.y+20, 4, 8, '#d94f4f');  // !
+      px(r.x+r.w/2+1, r.y+20, 4, 5, '#d94f4f');
+      var pr=t.prog||0;
+      px(r.x+10, r.y+r.h-6, r.w-20, 4, '#2a2226');
+      px(r.x+10, r.y+r.h-6, (r.w-20)*pr, 4, '#5fdc9a');
+    }else{
+      px(r.x+r.w/2-7, r.y+9, 14, 4, '#dff0f6');
+    }
+  }
+  // раковины
+  for(i=3;i<6;i++){
+    var s=OBST[i];
+    px(s.x-2, s.y+s.h-2, s.w+4, 6, 'rgba(0,0,0,0.25)');
+    px(s.x, s.y, s.w, s.h, clean?'#eaf2f6':'#c8d1d8');
+    px(s.x+4, s.y+4, s.w-8, s.h-10, clean?'#ffffff':'#dde5ea');
+    px(s.x+6, s.y+s.h-8, 10, 4, '#9aa4ab');
+  }
+  // зеркало
+  if(G.visual.mirror){
+    px(3, 70, 6, 46, '#7fd4ef'); px(4, 72, 4, 42, '#dff6ff'); px(4,74,4,3,'#ffffff');
+  }
+  // камера
+  if(G.visual.camera){
+    px(W-40, 14, 16, 9, '#3a444c'); px(W-26, 16, 6, 5, '#5a646c'); px(W-37, 17, 5, 5, '#9fe8ff');
+  }
+  // освежитель
+  if(G.visual.fresh){
+    px(W-18, 60, 8, 14, '#5fdc9a'); px(W-16, 64, 4, 6, '#ffffff');
+    ctx.globalAlpha=0.5+0.5*Math.sin(G.t*2); px(W-24, 58, 3, 3, '#9fe8ff'); px(W-14, 52, 2, 2, '#dff6ff'); ctx.globalAlpha=1;
+  }
+  // касса
+  var d=OBST[6];
+  px(d.x, d.y, d.w, d.h, '#a98b5e');
+  px(d.x, d.y, d.w, 5, '#c9a877');
+  px(d.x+4, d.y+7, 26, 14, '#3a444c');
+  px(d.x+7, d.y+10, 20, 8, '#5fdc9a');
+  px(d.x+36, d.y+7, 30, 14, '#7a5f3a');
+  // мусорка
+  var b=OBST[7];
+  px(b.x+2, b.y+b.h-2, b.w, 5, 'rgba(0,0,0,0.25)');
+  px(b.x+2, b.y+3, b.w-4, b.h-3, '#4f5a66'); px(b.x, b.y, b.w, 6, '#6b7683');
+  // растение
+  var pl=OBST[8];
+  px(pl.x+4, pl.y+pl.h-6, pl.w-8, 6, '#7a5f3a'); px(pl.x+7, pl.y+8, 12, 14, '#4f9b52'); px(pl.x+4, pl.y+2, 18, 10, '#5fbf4a');
+}
+function drawDirts(){
+  for(var i=0;i<G.dirts.length;i++){
+    var d=G.dirts[i], s=0.5+0.5*Math.sin(G.t*2+d.wob);
+    if(d.type==='stain'){
+      px(d.x-7,d.y-4,14,8,'rgba(90,70,40,0.55)'); px(d.x-5,d.y-2,10,5,'rgba(60,45,25,0.6)');
+    }else if(d.type==='puddle'){
+      px(d.x-9,d.y-4,18,8,'rgba(90,170,210,0.45)'); px(d.x-6,d.y-2,12,5,'rgba(150,215,240,0.5)');
+    }else if(d.type==='trash'){
+      px(d.x-4,d.y-3,8,6,'#d9cfa8'); px(d.x-2,d.y-5,4,3,'#c9bf98');
+    }else{
+      px(d.x-8,d.y-5,16,10,'rgba(217,79,154,0.55)'); px(d.x-4,d.y-2,8,5,'rgba(255,224,102,0.6)');
+    }
+    if(G.targetRef===d && G.targetType==='dirt'){
+      px(d.x-10, d.y-10, 20, 3, '#2a2226');
+      px(d.x-10, d.y-10, 20*d.prog, 3, '#5fdc9a');
+    }
+  }
+}
+
+function drawPeople(){
+  for(var i=G.queue.length-1;i>=0;i--) drawVisitor(G.queue[i], i===0);
+  for(var j=0;j<G.inside.length;j++) drawVisitor(G.inside[j], true);
+}
+function drawVisitor(v, isFront){
+  var x=v.x, y=v.y;
+  px(x-9, y-3, 18, 5, 'rgba(0,0,0,0.25)');
+  var bob=v.moving?Math.round(Math.sin(v.anim)*1.3):Math.round(Math.sin(G.t*1.6+v.bob)*1.0);
+  var step=v.moving?Math.sign(Math.sin(v.anim)):0;
+  var by=y-9+bob;
+  px(x-6, by, 5, 9-Math.max(0,step), v.pants);
+  px(x+1, by, 5, 9+Math.min(0,step), v.pants);
+  px(x-7, y-2, 7, 3, '#22262a'); px(x+1, y-2, 7, 3, '#22262a');
+  px(x-7, by-11, 14, 12, v.shirt);
+  px(x-7, by-11, 2, 12, shade(v.shirt,0.8)); px(x+5, by-11, 2, 12, shade(v.shirt,0.8));
+  px(x-9, by-9+bob, 3, 8, v.skin); px(x+6, by-9-bob, 3, 8, v.skin);
+  var hy=by-21;
+  px(x-6, hy, 12, 11, v.skin);
+  px(x-6, hy, 12, 3, v.hair);
+  if(v.hat){ px(x-7, hy-2, 14, 4, shade(v.shirt,1.1)); }
+  px(x-4, hy+5, 2, 3, '#22262a'); px(x+2, hy+5, 2, 3, '#22262a');
+  px(x-2, hy+9, 4, 1, shade(v.skin,0.8));
+
+  // признаки над головой
+  var ty=hy-12;
+  for(var k=0;k<v.traits.length;k++){
+    drawTrait(v.traits[k], x + (k - (v.traits.length-1)/2)*11, ty);
+  }
+  // значок проверки
+  if(v.checking>0){
+    px(x-8, hy-26, 16, 5, '#2a2226');
+    px(x-8, hy-26, 16*(1-v.checking/(0.9*G.mods.check)), 5, '#9fe8ff');
+    ctx.fillStyle='#9fe8ff'; ctx.font='bold 9px "Courier New",monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('?', x, hy-32);
+  }else if(v.checked){
+    ctx.font='bold 8px "Courier New",monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    var s = v.kind==='hooligan'?'ЖУЛИК':'ЧИСТЫЙ';
+    var col= v.kind==='hooligan'?'#ff8b8b':'#7ef07e';
+    var wdt=ctx.measureText(s).width+6;
+    px(x-wdt/2, hy-32, wdt, 11, 'rgba(10,16,20,0.85)');
+    ctx.fillStyle=col; ctx.fillText(s, x, hy-26);
+  }
+  // терпение
+  if(isFront && v.state==='queue'){
+    var f=clamp(v.patience/v.maxPatience,0,1);
+    var bx=x-11, byy=hy-14;
+    px(bx-1, byy-1, 24, 5, '#22262a');
+    px(bx, byy, 22*f, 3, f>0.5?'#5fdc6a':(f>0.25?'#ffd166':'#ff5c5c'));
+  }
+  // метка жулика внутри
+  if(v.kind==='hooligan' && v.state!=='out'){
+    ctx.globalAlpha=0.6+0.4*Math.sin(G.t*7);
+    ctx.fillStyle='#ff5c5c'; ctx.font='bold 12px "Courier New",monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('!', x, hy-14);
+    ctx.globalAlpha=1;
+  }
+}
+function drawTrait(id,x,y){
+  if(id==='coin'){ px(x-4,y-4,8,8,'#a8862c'); px(x-3,y-3,6,6,'#ffd24a'); px(x-1,y-2,2,4,'#a8862c'); }
+  else if(id==='mask'){ px(x-5,y-4,10,8,'#22262a'); px(x-4,y-2,8,2,'#3a444c'); px(x-2,y-5,4,2,'#22262a'); }
+  else if(id==='crow'){ px(x-7,y-1,14,3,'#8d99a3'); px(x+4,y-4,4,4,'#8d99a3'); px(x+6,y-5,3,3,'#8d99a3'); }
+  else if(id==='spray'){ px(x-3,y-5,6,10,'#d94f4f'); px(x-2,y-7,4,3,'#8d99a3'); px(x+3,y-4,3,3,'#ffd166'); }
+  else if(id==='bag'){ px(x-5,y-2,10,7,'#a98b5e'); px(x-2,y-5,4,3,'#8d7448'); }
+  else if(id==='phone'){ px(x-3,y-5,6,10,'#22262a'); px(x-2,y-4,4,7,'#9fe8ff'); }
+  else if(id==='gloves'){ px(x-4,y-3,4,7,'#d94f9a'); px(x+1,y-3,4,7,'#d94f9a'); }
+}
+
+function drawPlayer(){
+  var p=G.player, x=Math.round(p.x), y=Math.round(p.y);
+  var bob=p.moving?Math.round(Math.sin(p.anim)*1.4):0;
+  var step=p.moving?Math.sign(Math.sin(p.anim)):0;
+  px(x-9, y-3, 18, 5, 'rgba(0,0,0,0.3)');
+  var by=y-9+bob;
+  px(x-6, by, 5, 9-Math.max(0,step), '#2f3f56');
+  px(x+1, by, 5, 9+Math.min(0,step), '#2f3f56');
+  px(x-7, y-2, 7, 3, '#1a2226'); px(x+1, y-2, 7, 3, '#1a2226');
+  px(x-7, by-11, 14, 12, '#3f7fbf');
+  px(x-7, by-11, 2, 12, '#2f6096'); px(x+5, by-11, 2, 12, '#2f6096');
+  px(x-2, by-9, 4, 5, '#dff0f6');
+  px(x-9, by-9+bob, 3, 8, '#f2c49a'); px(x+6, by-9-bob, 3, 8, '#f2c49a');
+  var hy=by-21;
+  px(x-6, hy, 12, 11, '#f2c49a'); px(x-6, hy+9, 12, 2, shade('#f2c49a',0.85));
+  px(x-4, hy+4, 2, 3, '#22262a'); px(x+2, hy+4, 2, 3, '#22262a');
+  px(x-2, hy+8, 4, 1, '#c98a6a');
+  // кепка
+  px(x-7, hy-5, 14, 5, '#2f6096'); px(x-8, hy-2, 16, 3, '#244b76');
+  // швабра в руке
+  var mopCol=G.visual.mop?'#5ac1e0':'#b08a5e';
+  var swing = G.targetType==='dirt' ? Math.sin(G.t*10)*3 : 0;
+  px(x+8, by-14+swing, 3, 22, mopCol);
+  px(x+6, by+8+swing, 8, 4, G.visual.mop?'#dfe9ef':'#d9cfa8');
+}
+
+function addFloat(x,y,text,col){ G.floats.push({x:x,y:y,text:text,col:col||'#fff',t:1.1,life:1.1}); }
+function drawFloats(){
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(var i=0;i<G.floats.length;i++){
+    var f=G.floats[i], a=clamp(f.t/f.life,0,1);
+    ctx.globalAlpha=a;
+    ctx.font='bold 12px "Courier New",monospace';
+    ctx.fillStyle='#0a1013'; ctx.fillText(f.text, f.x+1, f.y+1);
+    ctx.fillStyle=f.col; ctx.fillText(f.text, f.x, f.y);
+    ctx.globalAlpha=1;
+  }
+}
+
+var promptEl=null;
+function drawPrompts(){
+  if(!promptEl){ promptEl=document.createElement('div'); promptEl.className='prompt'; worldui.appendChild(promptEl); }
+  var txt=null, px_=0, py_=0;
+  if(G.state==='play' && G.targetType){
+    var r=G.targetRef;
+    if(G.targetType==='front'){ txt='E — пропустить · R — прогнать · Q — проверить'; px_=r.x; py_=r.y-42; }
+    else if(G.targetType==='dirt'){ txt='Держите E — убрать ('+DIRT_DEF[r.type].name+')'; px_=r.x; py_=r.y-18; }
+    else if(G.targetType==='clog'){ txt='Держите E — прочистить'; var fp=toiletFront(r); px_=fp.x; py_=fp.y-18; }
+    else if(G.targetType==='thug'){ txt='E — выставить жулика!'; px_=r.x; py_=r.y-34; }
+  }
+  if(txt){
+    promptEl.style.display='block';
+    promptEl.style.left=clamp(px_,90,W-90)+'px';
+    promptEl.style.top=clamp(py_,4,H-14)+'px';
+    promptEl.textContent=txt;
+  }else promptEl.style.display='none';
+}
+
+/* ============================================================
+   ИНТЕРФЕЙС
+   ============================================================ */
+function openModal(html){ overlay.innerHTML=html; overlay.classList.add('active'); }
+function closeModal(){ overlay.innerHTML=''; overlay.classList.remove('active'); }
+var toastEl=null;
+function toast(msg,col){
+  if(!toastEl){ toastEl=document.createElement('div'); toastEl.className='toast'; worldui.appendChild(toastEl); }
+  toastEl.textContent=msg; toastEl.style.color=col||'#fff';
+  toastEl.classList.add('show'); G.toastT=2.0;
+}
+function updateHUD(){
+  elMoney.textContent=G.money+' ₽';
+  elCombo.textContent='серия: '+G.combo+(G.bestCombo>0?(' · макс '+G.bestCombo):'');
+  var full=''; for(var i=0;i<3;i++) full+=(i<G.hearts?'♥':'♡');
+  elHearts.textContent=full;
+  elWho.textContent='Смена '+G.shift+(G.state==='play'?(' · до конца: '+(G.pool.length+G.queue.length+G.inside.length)):'');
+  elQueue.textContent='Очередь: '+G.queue.length+'  ·  Внутри: '+G.inside.filter(function(v){return v.state!=='out';}).length;
+  elServed.textContent='Обслужено '+G.served+'/'+G.target;
+  elClean.style.width=clamp(G.clean,0,100)+'%';
+  elClean.style.background = G.clean>50?'#5fdc9a':(G.clean>25?'#ffd166':'#ff5c5c');
+}
+
+/* ---------- экраны ---------- */
+function showMenu(){
+  G.state='menu';
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h1>ТУАЛЕТ ЗА РУБЛЬ</h1>'
+    +'<p style="color:#9fe8ff">Вы — единственный сотрудник.<br>Пускать за рубль, гнать жуликов,<br>убирать и улучшать туалет. 4 смены!</p>'
+    +'<button class="btn" id="mPlay">ИГРАТЬ</button>'
+    +'<button class="btn alt" id="mHow">КАК ИГРАТЬ</button>'
+    +'<button class="btn dim" id="mMute">ЗВУК: ВКЛ</button>'
+    +'</div></div>'
+  );
+  document.getElementById('mPlay').onclick=function(){ actx(); G.shift=1; G.money=0; G.hearts=3; G.combo=0; G.bestCombo=0; G.taken=[]; resetMods(); startShift(); };
+  document.getElementById('mHow').onclick=showHow;
+  document.getElementById('mMute').onclick=function(){ G.muted=!G.muted; this.textContent='ЗВУК: '+(G.muted?'ВЫКЛ':'ВКЛ'); };
+}
+function showHow(){
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h2>КАК ИГРАТЬ</h2>'
+    +'<p style="text-align:left">'
+    +'<b>У входа</b> стоит посетитель. Решайте:<br>'
+    +'<b>E</b> — пропустить за 1 ₽ · <b>R</b> — прогнать · <b>Q</b> — проверить (займёт время).'
+    +'</p>'
+    +'<div class="legend">'
+    +'<div>🪙 рубль — обычный</div>'
+    +'<div>😷 маска / лом / баллончик — точно жулик</div>'
+    +'<div>🎒 мешок — бывает и у честных</div>'
+    +'</div>'
+    +'<p style="text-align:left">'
+    +'<b>Держите E</b> у пятна — убрать мусор.<br>'
+    +'<b>Держите E</b> у засорённого унитаза — прочистить.<br>'
+    +'Если пропустить жулика — он украдёт деньги и намусорит: <b>подбегите и нажмите E</b>, чтобы выставить.'
+    +'</p>'
+    +'<p style="color:#ffd166">Прогнали честного человека или не дождались — минус ♥</p>'
+    +'<p style="color:#a8bcc4">WASD / стрелки — ходить · ESC — пауза</p>'
+    +'<button class="btn" id="hBack">НАЗАД</button>'
+    +'</div></div>'
+  );
+  document.getElementById('hBack').onclick=showMenu;
+}
+function showPause(){
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h2>ПАУЗА</h2>'
+    +'<button class="btn" id="pRes">ПРОДОЛЖИТЬ</button>'
+    +'<button class="btn alt" id="pRestart">НАЧАТЬ ЗАНОВО</button>'
+    +'<button class="btn dim" id="pMenu">В МЕНЮ</button>'
+    +'</div></div>'
+  );
+  document.getElementById('pRes').onclick=function(){ G.state='play'; closeModal(); };
+  document.getElementById('pRestart').onclick=function(){ G.shift=1; G.money=0; G.hearts=3; G.combo=0; G.bestCombo=0; G.taken=[]; resetMods(); startShift(); };
+  document.getElementById('pMenu').onclick=showMenu;
+}
+function resetMods(){
+  G.mods={walk:1, clean:1, dirtEvery:1, patience:1, clogEvery:1, dirtDrain:1, check:1, pay:1, mischief:1};
+  G.visual={mop:false, fresh:false, mirror:false, locks:false, tiles:false, camera:false};
+}
+function endShift(){
+  if(G.shift>=TOTAL_SHIFTS){ G.state='win'; showWin(); return; }
+  G.state='shop';
+  if(G.hearts<3){ G.hearts++; }
+  showShop();
+}
+function showShop(){
+  var cards='';
+  for(var i=0;i<UPGRADES.length;i++){
+    var u=UPGRADES[i], owned=G.taken.indexOf(u.id)>=0;
+    var poor=G.money<u.cost;
+    cards+='<button class="shopcard'+(owned?' owned':(poor?' poor':''))+'" data-up="'+u.id+'"'+(owned?' disabled':'')+'>'
+      +'<b>'+u.name+'</b><i>'+u.desc+'</i><u>'+(owned?'КУПЛЕНО':(u.cost+' ₽'))+'</u></button>';
+  }
+  var stars = G.served>=G.target?'★★★':(G.served>=Math.ceil(G.target*0.6)?'★★☆':'★☆☆');
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h2>СМЕНА '+G.shift+' ПРОЙДЕНА</h2>'
+    +'<p>Обслужено: <b>'+G.served+'/'+G.target+'</b> · '+stars+' · В кассе: <b style="color:#ffe066">'+G.money+' ₽</b></p>'
+    +'<h3>УЛУЧШИТЬ ТУАЛЕТ</h3>'
+    +'<div class="shopgrid">'+cards+'</div>'
+    +'<button class="btn" id="sNext" style="margin-top:4px">СЛЕДУЮЩАЯ СМЕНА</button>'
+    +'</div></div>'
+  );
+  var list=overlay.querySelectorAll('[data-up]');
+  for(var k=0;k<list.length;k++){
+    list[k].onclick=function(){
+      var id=this.getAttribute('data-up');
+      if(G.taken.indexOf(id)>=0) return;
+      for(var j=0;j<UPGRADES.length;j++){
+        if(UPGRADES[j].id===id){
+          if(G.money<UPGRADES[j].cost){ SFX.bad(); toast('Не хватает денег','#ff8b8b'); return; }
+          G.money-=UPGRADES[j].cost;
+          UPGRADES[j].apply();
+          G.taken.push(id);
+          SFX.buy();
+          break;
+        }
+      }
+      showShop(); updateHUD();
+    };
+  }
+  document.getElementById('sNext').onclick=function(){ G.shift++; startShift(); };
+  updateHUD();
+}
+function rank(){
+  if(G.money<40) return 'Стажёр';
+  if(G.money<90) return 'Уборщик';
+  if(G.money<160) return 'Смотритель';
+  return 'Хозяин туалета';
+}
+function showWin(){
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h1>СМЕНА ОТРАБОТАНА!</h1>'
+    +'<p style="color:#9fe8ff">Четыре смены позади. Туалет блестит!</p>'
+    +'<p class="big">'+G.money+' ₽</p>'
+    +'<p>Лучшая серия: <b>'+G.bestCombo+'</b></p>'
+    +'<h2 style="color:#ffe066">'+rank()+'</h2>'
+    +'<button class="btn" id="wRetry">ИГРАТЬ СНОВА</button>'
+    +'</div></div>'
+  );
+  document.getElementById('wRetry').onclick=function(){ G.shift=1; G.money=0; G.hearts=3; G.combo=0; G.bestCombo=0; G.taken=[]; resetMods(); startShift(); };
+}
+function gameOver(){
+  G.state='gameover';
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h1 style="color:#ff8b8b">СМЕНА ПРОВАЛЕНА</h1>'
+    +'<p>Жулики обчистили кассу, а туалет слишком грязный.</p>'
+    +'<p class="big">'+G.money+' ₽</p>'
+    +'<p>Смена '+G.shift+' · серия '+G.bestCombo+'</p>'
+    +'<button class="btn" id="gRetry">ЕЩЁ РАЗ</button>'
+    +'<button class="btn dim" id="gMenu">В МЕНЮ</button>'
+    +'</div></div>'
+  );
+  document.getElementById('gRetry').onclick=function(){ G.shift=1; G.money=0; G.hearts=3; G.combo=0; G.bestCombo=0; G.taken=[]; resetMods(); startShift(); };
+  document.getElementById('gMenu').onclick=showMenu;
+}
+
+/* ============================================================
+   ЦИКЛ
+   ============================================================ */
+function update(dt){
+  G.t+=dt;
+  if(G.toastT>0){ G.toastT-=dt; if(G.toastT<=0&&toastEl) toastEl.classList.remove('show'); }
+  for(var i=G.floats.length-1;i>=0;i--){ var f=G.floats[i]; f.y-=20*dt; f.t-=dt; if(f.t<=0) G.floats.splice(i,1); }
+  if(G.state==='play'){
+    updatePlay(dt);
+    updateVisitors(dt);
+    if(G.state==='play') updateRoom(dt);
+  }
+}
+function render(){
+  ctx.clearRect(0,0,W,H);
+  drawScene();
+  updateHUD();
+}
+
+/* ---------- масштабирование ---------- */
+var DH=52, DB=30;
+var elTop=document.getElementById('topwrap'), elStage=document.getElementById('stagewrap'), elBot=document.getElementById('botwrap');
+var inTop=document.getElementById('topbar'), inScreen=document.getElementById('screen'), inBot=document.getElementById('bottombar');
+function fit(){
+  var availW=window.innerWidth-10, availH=window.innerHeight-10;
+  var s=Math.min(availW/W, availH/(DH+H+DB));
+  s=Math.max(0.5, Math.floor(s*20)/20);
+  var t='scale('+s+')';
+  inTop.style.transform=t; inScreen.style.transform=t; inBot.style.transform=t;
+  elTop.style.width=(W*s)+'px'; elTop.style.height=(DH*s)+'px';
+  elStage.style.width=(W*s)+'px'; elStage.style.height=(H*s)+'px';
+  elBot.style.width=(W*s)+'px'; elBot.style.height=(DB*s)+'px';
+}
+window.addEventListener('resize',fit);
+
+var last=0;
+function loop(ts){
+  if(!last) last=ts;
+  var dt=(ts-last)/1000; last=ts;
+  if(dt>0.05) dt=0.05;
+  update(dt); render();
+  requestAnimationFrame(loop);
+}
+
+fit(); updateHUD(); showMenu(); requestAnimationFrame(loop);
+
+// отладочный доступ — только при открытии с #debug
+if(location.hash==='#debug'){
+  window.__B={G:G, acceptFront:acceptFront, rejectFront:rejectFront, checkFront:checkFront,
+    ejectHooligan:ejectHooligan, addDirt:addDirt, clogToilet:clogToilet, spawnVisitor:spawnVisitor,
+    startShift:startShift, endShift:endShift, update:update, showShop:showShop, tick:function(dt){update(dt);},
+    spawnKind:function(kind,traits){
+      var v=makeVisitor(kind);
+      if(traits) v.traits=traits.slice();
+      v.maxPatience=v.patience=G.cfg.patience*G.mods.patience*rnd(0.85,1.15);
+      v.tx=QUEUE_POS[Math.min(G.queue.length,3)][0];
+      v.ty=QUEUE_POS[Math.min(G.queue.length,3)][1];
+      G.queue.push(v);
+      return v;
+    }};
+}
+
+})();
+</script>
+</body>
+</html>

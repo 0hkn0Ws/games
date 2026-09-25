@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Игры — 0hkn0Ws</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#0d0b14; --card:#1c1830; --card2:#241f3a; --line:#0a0812;
+  --gold:#ffe066; --gold2:#ffd166; --dim:#a99cc0;
+}
+body{
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(255,209,102,.10), transparent 60%),
+    radial-gradient(900px 500px at 90% 0%, rgba(140,120,255,.12), transparent 55%),
+    var(--bg);
+  color:#fff; min-height:100vh;
+  font-family:"Segoe UI",system-ui,-apple-system,"Trebuchet MS",sans-serif;
+  padding:32px 18px 60px;
+}
+.wrap{max-width:1080px;margin:0 auto;}
+header{text-align:center;margin-bottom:34px;}
+h1{
+  font-size:clamp(28px,6vw,46px);font-weight:800;letter-spacing:.5px;line-height:1.1;
+  background:linear-gradient(180deg,#fff2c0,#ffb454);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+header p{color:var(--dim);margin-top:10px;font-size:clamp(13px,2.4vw,16px);}
+.count{
+  display:inline-block;margin-top:12px;padding:4px 14px;border-radius:999px;
+  background:rgba(255,224,102,.12);color:var(--gold2);font-size:13px;font-weight:700;
+  border:1px solid rgba(255,224,102,.25);
+}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));}
+.card{
+  position:relative;display:flex;flex-direction:column;
+  background:linear-gradient(180deg,var(--card2),var(--card));
+  border:1px solid rgba(255,255,255,.07);border-radius:20px;
+  padding:20px 20px 18px;text-decoration:none;color:inherit;overflow:hidden;
+  transition:transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+  box-shadow:0 10px 26px rgba(0,0,0,.35);
+}
+.card:hover{transform:translateY(-5px);border-color:rgba(255,224,102,.55);box-shadow:0 16px 36px rgba(0,0,0,.45);}
+.card .glow{
+  position:absolute;inset:-40% -20% auto -20%;height:180px;
+  background:radial-gradient(closest-side, var(--glowc,#ffe066), transparent 70%);
+  opacity:.16;pointer-events:none;
+}
+.card .top{display:flex;align-items:center;gap:12px;margin-bottom:12px;position:relative;}
+.ico{
+  font-size:30px;line-height:1;flex:0 0 auto;
+  width:54px;height:54px;display:flex;align-items:center;justify-content:center;
+  border-radius:14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);
+}
+.card h2{font-size:18px;font-weight:800;color:#fff;line-height:1.25;}
+.card .kind{font-size:12px;color:var(--glowc,var(--gold2));font-weight:700;margin-top:3px;letter-spacing:.3px;}
+.card p{font-size:13.5px;line-height:1.5;color:#c3b8d8;position:relative;}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;position:relative;}
+.tag{font-size:11px;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.08);color:#cfc4e4;}
+.play{
+  margin-top:16px;display:inline-flex;align-items:center;gap:8px;
+  font-size:13.5px;font-weight:800;color:#20182e;
+  background:linear-gradient(180deg,#ffe08a,#f5b53f);
+  padding:9px 16px;border-radius:12px;align-self:flex-start;
+  box-shadow:0 4px 0 #b57d20;position:relative;
+}
+.card:hover .play{filter:brightness(1.06);}
+footer{margin-top:44px;text-align:center;color:#6f6584;font-size:12.5px;line-height:1.7;}
+footer a{color:var(--dim);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Игры</h1>
+    <p>Браузерные игры — запускаются прямо в браузере, ничего устанавливать не нужно</p>
+    <div class="count" id="count"></div>
+  </header>
+  <div class="grid" id="grid"></div>
+  <footer>
+    Игры работают на телефоне и компьютере · звук синтезируется кодом<br>
+    Сделано для <a href="https://github.com/0hkn0Ws">0hkn0Ws</a>
+  </footer>
+</div>
+
+<script>
+/* ---------- список игр ---------- */
+var GAMES=[
+  {f:'cats-pillow.html',  ic:'🐱', name:'Бой на подушках', kind:'2D файтинг',
+   glow:'#ffb3e6', desc:'Рыжий кот Мурзик против шести противников. Комбо, подбросы, жонглирование и своя супер-атака у каждой из 7 подушек.',
+   tags:['6 противников','7 подушек','6 арен','ИИ']},
+
+  {f:'sword-2d.html',     ic:'⚔️', name:'Меч и Нечисть', kind:'2D action-RPG',
+   glow:'#7ce7ff', desc:'Рубите зомби, вампиров, чертиков и гоблинов. Локации с домиками, клады, прокачка оружия, брони и попутчиков.',
+   tags:['5 локаций','прокачка','спутники','босс']},
+
+  {f:'toilet-2d.html',    ic:'🚻', name:'Туалет за рубль', kind:'2D аркада',
+   glow:'#5fdc9a', desc:'Вы единственный сотрудник платного туалета. Пропускайте за рубль, гоняйте жуликов, мойте и улучшайте.',
+   tags:['смены','уборка','жулики','магазин']},
+
+  {f:'burger-2d.html',    ic:'🍔', name:'Бургерная у зверей', kind:'2D кулинарная аркада',
+   glow:'#ffd166', desc:'Жарьте котлеты на гриле, режьте овощи и собирайте бургеры в правильном порядке для очереди зверей.',
+   tags:['мини-игры','клиенты','смены','чаевые']},
+
+  {f:'parkour-2d.html',   ic:'🏃', name:'Прыго·Паркур', kind:'пиксельный платформер',
+   glow:'#8fd0ff', desc:'Классический платформер: бегите, прыгайте, топчите врагов и взбирайтесь по стенам до флага.',
+   tags:['платформер','уровни','монеты','враги']},
+
+  {f:'dead-horizon.html', ic:'🧟', name:'Мёртвый горизонт', kind:'3D паркур',
+   glow:'#ff8b8b', desc:'Паркур от первого лица в мире зомби. Прыгайте по крышам и не дайте себя догнать.',
+   tags:['3D','зомби','паркур','WebGL']},
+
+  {f:'shooter-3d.html',   ic:'🎯', name:'Арена', kind:'3D шутер',
+   glow:'#c9a24f', desc:'Шутер от первого лица: отбивайтесь от волн монстров на арене.',
+   tags:['3D','волны','монстры','WebGL']},
+
+  {f:'tir-2d.html',       ic:'🔫', name:'Тир', kind:'2D тренажёр стрельбы',
+   glow:'#9fe8ff', desc:'Первая версия проекта: стрельба по мишеням на точность и скорость.',
+   tags:['тир','мишени','рекорд']}
+];
+
+var grid=document.getElementById('grid');
+var html='';
+for(var i=0;i<GAMES.length;i++){
+  var g=GAMES[i];
+  var tags='';
+  for(var t=0;t<g.tags.length;t++) tags+='<span class="tag">'+g.tags[t]+'</span>';
+  html+='<a class="card" href="'+g.f+'" style="--glowc:'+g.glow+'">'
+      +   '<div class="glow"></div>'
+      +   '<div class="top"><div class="ico">'+g.ic+'</div>'
+      +     '<div><h2>'+g.name+'</h2><div class="kind">'+g.kind+'</div></div>'
+      +   '</div>'
+      +   '<p>'+g.desc+'</p>'
+      +   '<div class="tags">'+tags+'</div>'
+      +   '<span class="play">▶ ИГРАТЬ</span>'
+      + '</a>';
+}
+grid.innerHTML=html;
+document.getElementById('count').textContent=GAMES.length+' игр';
+</script>
+</body>
+</html>

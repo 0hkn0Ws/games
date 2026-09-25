@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Бургерная у зверей</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
+html,body{margin:0;height:100%;overflow:hidden;background:#150f1c;
+  font-family:"Courier New",ui-monospace,Consolas,monospace;color:#fff;}
+#app{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;}
+.scaled{position:relative;overflow:hidden;}
+.scaled>.inner{position:absolute;left:0;top:0;transform-origin:0 0;}
+canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;}
+
+/* ---------- HUD ---------- */
+#topbar{width:480px;height:52px;display:flex;align-items:center;gap:8px;padding:4px 8px;
+  background:#2b2233;border:3px solid #120d18;}
+#topbar .sec{display:flex;flex-direction:column;justify-content:center;min-width:0;}
+#topbar .grow{flex:1;align-items:center;}
+.hud-money{font-size:15px;font-weight:bold;color:#ffe066;line-height:1.1;white-space:nowrap;}
+.hud-sub{font-size:9px;color:#b9a8c9;line-height:1.3;white-space:nowrap;}
+.hearts{font-size:15px;letter-spacing:2px;color:#ff5c7a;line-height:1.1;text-align:right;}
+.orderrow{display:flex;gap:2px;align-items:center;justify-content:center;height:20px;}
+.orderrow .plus{font-size:10px;color:#8c7aa0;}
+
+#bottombar{width:480px;height:30px;display:flex;align-items:center;gap:8px;padding:2px 8px;
+  background:#2b2233;border:3px solid #120d18;font-size:10px;color:#cfc2dd;}
+#bottombar .tray{display:flex;align-items:center;gap:4px;}
+#bottombar .sep{flex:1;text-align:right;color:#8c7aa0;font-size:9px;}
+
+.ic{width:16px;height:16px;background-repeat:no-repeat;image-rendering:pixelated;
+  display:inline-block;vertical-align:middle;flex:0 0 auto;}
+.ic.s{width:11px;height:11px;background-size:77px 11px;}
+.ic.b{width:22px;height:22px;background-size:154px 22px;}
+
+/* ---------- overlay ---------- */
+#overlay,#worldui{position:absolute;left:0;top:0;width:480px;height:270px;}
+#worldui{pointer-events:none;}
+#overlay{pointer-events:none;}
+#overlay.active{pointer-events:auto;}
+
+.prompt{position:absolute;transform:translateX(-50%);white-space:nowrap;
+  background:#ffe066;color:#241a2e;font-size:10px;font-weight:bold;padding:2px 6px;
+  border:2px solid #120d18;box-shadow:0 2px 0 #120d18;}
+.toast{position:absolute;left:240px;top:112px;transform:translate(-50%,-50%);
+  white-space:nowrap;background:rgba(20,12,28,.9);border:2px solid #120d18;padding:3px 8px;
+  font-size:11px;font-weight:bold;color:#fff;opacity:0;transition:opacity .18s;}
+.toast.show{opacity:1;}
+
+.modal{position:absolute;left:0;top:0;width:480px;height:270px;display:flex;align-items:center;
+  justify-content:center;background:rgba(10,6,16,.82);}
+.panel{background:#2b2233;border:4px solid #120d18;padding:9px 13px;min-width:250px;max-width:440px;
+  text-align:center;box-shadow:0 6px 0 rgba(0,0,0,.45);}
+.panel h1{font-size:22px;margin:0 0 2px;color:#ffe066;letter-spacing:1px;}
+.panel h2{font-size:15px;margin:0 0 7px;color:#ffd166;}
+.panel h3{font-size:12px;margin:0 0 6px;color:#9fe8ff;letter-spacing:2px;}
+.panel p{font-size:10px;line-height:1.45;color:#d8cbe6;margin:5px 0;}
+.panel .big{font-size:26px;color:#ffe066;font-weight:bold;}
+.btn{font-family:inherit;font-size:11px;font-weight:bold;padding:6px 12px;margin:3px;
+  background:#ffe066;color:#241a2e;border:3px solid #120d18;box-shadow:0 3px 0 #a8862c;
+  cursor:pointer;display:inline-block;}
+.btn:active{transform:translateY(2px);box-shadow:0 1px 0 #a8862c;}
+.btn.alt{background:#5ac1e0;box-shadow:0 3px 0 #2f7d96;}
+.btn.dim{background:#7a6b90;color:#e8e0f2;box-shadow:0 3px 0 #4a3f5c;}
+.btn:disabled{opacity:.45;box-shadow:0 3px 0 #4a3f5c;cursor:default;}
+
+/* grill / cut bars */
+.bar{position:relative;width:360px;height:26px;margin:8px auto;border:3px solid #120d18;
+  background:#1a1224;overflow:hidden;}
+.zone{position:absolute;top:0;bottom:0;}
+.z-raw{background:#8a4a4a;}
+.z-ok{background:#3f9b52;}
+.z-burn{background:#b56a2a;}
+.z-bad{background:#6a2f2f;}
+.bar .inner{position:absolute;left:0;top:0;bottom:0;background:rgba(0,0,0,.0);}
+.marker{position:absolute;top:-2px;bottom:-2px;width:4px;background:#fff;
+  box-shadow:0 0 0 2px #120d18;transform:translateX(-2px);}
+.barlabel{position:absolute;top:3px;left:0;right:0;display:flex;justify-content:space-between;
+  font-size:9px;color:#fff;text-shadow:0 1px 0 #000;padding:0 6px;pointer-events:none;}
+.dots{font-size:16px;letter-spacing:4px;color:#ffd166;height:20px;}
+
+/* assembly */
+.asmwrap{display:flex;gap:14px;align-items:flex-start;justify-content:center;}
+.stackbox{border:3px solid #120d18;background:#1e1628;padding:4px 6px;min-width:74px;}
+.stackbox .cap{font-size:8px;color:#9a8bb0;margin-bottom:3px;letter-spacing:1px;}
+.col{display:flex;flex-direction:column-reverse;align-items:center;gap:1px;min-height:44px;justify-content:flex-start;}
+.ingbtns{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;}
+.ingbtn{font-family:inherit;font-size:9px;background:#3a2f4a;border:3px solid #120d18;color:#fff;
+  padding:3px 5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px;
+  box-shadow:0 3px 0 #1b1424;white-space:nowrap;}
+.ingbtn:active{transform:translateY(2px);box-shadow:0 1px 0 #1b1424;}
+.ingbtn.dis{opacity:.35;cursor:default;}
+.ingbtn b{font-size:9px;color:#ffe066;}
+.ingbtn.dis b{color:#8a7d9c;}
+.ingbtn i{font-style:normal;font-size:9px;color:#cfc2dd;}
+.shake{animation:sh .22s;}
+@keyframes sh{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.upcard{display:block;width:100%;text-align:left;margin:4px 0;background:#3a2f4a;border:3px solid #120d18;
+  color:#fff;font-family:inherit;font-size:10px;padding:6px 8px;cursor:pointer;box-shadow:0 3px 0 #1b1424;}
+.upcard:active{transform:translateY(2px);box-shadow:0 1px 0 #1b1424;}
+.upcard b{color:#ffe066;font-size:11px;}
+.upcard i{color:#a99cc0;font-style:normal;font-size:9px;}
+
+/* touch */
+.tbtn{position:absolute;pointer-events:auto;background:rgba(255,255,255,.16);border:2px solid rgba(255,255,255,.5);
+  color:#fff;font-size:16px;font-weight:bold;display:flex;align-items:center;justify-content:center;
+  width:34px;height:34px;border-radius:6px;}
+.tbtn:active{background:rgba(255,224,102,.5);}
+
+#hint-toggle{position:absolute;right:4px;bottom:4px;pointer-events:auto;font-size:9px;color:#cfc2dd;
+  background:rgba(20,12,28,.7);border:2px solid #120d18;padding:1px 5px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="scaled" id="topwrap"><div class="inner" id="topbar">
+    <div class="sec">
+      <div class="hud-money" id="hud-money">0 ₽</div>
+      <div class="hud-sub" id="hud-combo">серия: 0</div>
+    </div>
+    <div class="sec grow">
+      <div class="hud-sub" id="hud-who">Заказ</div>
+      <div class="orderrow" id="hud-order"></div>
+    </div>
+    <div class="sec">
+      <div class="hud-sub" id="hud-shift">Смена 1 · 0/0</div>
+      <div class="hearts" id="hud-hearts">♥♥♥</div>
+    </div>
+  </div></div>
+
+  <div class="scaled" id="stagewrap"><div class="inner" id="screen">
+    <canvas id="c" width="480" height="270"></canvas>
+    <div id="worldui"></div>
+    <div id="overlay"></div>
+  </div></div>
+
+  <div class="scaled" id="botwrap"><div class="inner" id="bottombar">
+    <div class="tray" id="hud-tray"></div>
+    <div class="sep" id="hud-hint">WASD — ходить · E — действие · ESC — пауза</div>
+  </div></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   БУРГЕРНАЯ У ЗВЕРЕЙ — 2D пиксельная игра
+   Все спрайты и звуки создаются кодом. Внешних файлов нет.
+   ============================================================ */
+
+var W = 480, H = 270;
+var TOTAL_SHIFTS = 4;
+
+/* ---------- DOM ---------- */
+var cvs = document.getElementById('c');
+var ctx = cvs.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+var overlay   = document.getElementById('overlay');
+var worldui   = document.getElementById('worldui');
+var elMoney   = document.getElementById('hud-money');
+var elCombo   = document.getElementById('hud-combo');
+var elWho     = document.getElementById('hud-who');
+var elOrder   = document.getElementById('hud-order');
+var elShift   = document.getElementById('hud-shift');
+var elHearts  = document.getElementById('hud-hearts');
+var elTray    = document.getElementById('hud-tray');
+var elHint    = document.getElementById('hud-hint');
+
+/* ---------- ингредиенты ---------- */
+var ING = {
+  bun_bottom:{name:'Булочка', price:2, col:'#d99a52'},
+  bun_top:   {name:'Крышка',  price:2, col:'#e5a95e'},
+  patty:     {name:'Котлета', price:8, col:'#7a4526'},
+  cheese:    {name:'Сыр',     price:4, col:'#f7c948'},
+  veggie:    {name:'Овощи',   price:5, col:'#5fbf4a'},
+  sauce:     {name:'Соус',    price:3, col:'#e8556d'}
+};
+var ING_ORDER = ['bun_bottom','bun_top','patty','cheese','veggie','sauce','burger'];
+var ING_SHORT = {bun_bottom:'булка н.', bun_top:'булка в.', patty:'котлета',
+                 cheese:'сыр', veggie:'овощи', sauce:'соус'};
+var FREE = {bun_bottom:1, bun_top:1, cheese:1, sauce:1};
+
+/* ---------- животные ---------- */
+var SPECIES = {
+  cat:   {name:'Кот',     body:'#f2a65a', dark:'#d98a3a', ear:'point', inner:'#ffc9a0'},
+  dog:   {name:'Пёс',     body:'#c98a5b', dark:'#a06a3e', ear:'flop',  inner:'#e0a877'},
+  rabbit:{name:'Заяц',    body:'#efe9e1', dark:'#cfc7bb', ear:'long',  inner:'#ffb9c9'},
+  bear:  {name:'Медведь', body:'#8b6244', dark:'#6d4a31', ear:'round', inner:'#b98a68'},
+  fox:   {name:'Лиса',    body:'#f08a3c', dark:'#d06a1c', ear:'point', inner:'#ffd0a0'},
+  panda: {name:'Панда',   body:'#f4f4f4', dark:'#2f2f2f', ear:'round', inner:'#ffffff'},
+  pig:   {name:'Свин',    body:'#f2a3c0', dark:'#d97fa1', ear:'round', inner:'#ffd0e0'},
+  frog:  {name:'Жаба',    body:'#7ec850', dark:'#5aa036', ear:'eyes',  inner:'#ffffff'},
+  cow:   {name:'Корова',  body:'#f5f0e6', dark:'#3a3a3a', ear:'round', inner:'#ffd0d0'},
+  owl:   {name:'Сова',    body:'#b08a5e', dark:'#8a6a44', ear:'tuft',  inner:'#e0c9a0'}
+};
+var SPECIES_KEYS = Object.keys(SPECIES);
+
+/* ---------- улучшения ---------- */
+var UPGRADES = [
+  {id:'walk',     name:'Быстрые ноги',   desc:'+20% скорость ходьбы',            apply:function(){G.mods.walk*=1.2;}},
+  {id:'grill',    name:'Мастер гриля',   desc:'+35% зона прожарки',              apply:function(){G.mods.grillZone*=1.35;}},
+  {id:'cut',      name:'Острый нож',     desc:'+35% зона нарезки',               apply:function(){G.mods.cutZone*=1.35;}},
+  {id:'patience', name:'Вкусный запах',  desc:'+20% терпение клиентов',          apply:function(){G.mods.patience*=1.2;}},
+  {id:'tip',      name:'Щедрые чаевые',  desc:'+25% денег за заказ',             apply:function(){G.mods.tip*=1.25;}},
+  {id:'hands',    name:'Ловкие руки',    desc:'Ошибка при сборке дешевле вдвое', apply:function(){G.mods.asmErr*=0.5;}}
+];
+
+/* ---------- станции ---------- */
+var STATIONS = [
+  {id:'grill',  label:'Гриль',        x:30,  y:112, w:120, h:50,  ax:90,  ay:176},
+  {id:'cut',    label:'Нарезка',      x:30,  y:180, w:120, h:52,  ax:90,  ay:246},
+  {id:'asm',    label:'Сборка',       x:306, y:112, w:150, h:88,  ax:380, ay:214},
+  {id:'bin',    label:'Выбросить',    x:186, y:196, w:64,  h:44,  ax:218, ay:252},
+  {id:'window', label:'Отдать заказ', x:196, y:78,  w:104, h:20,  ax:248, ay:116}
+];
+var WALK = {x0:20, y0:106, x1:460, y1:256};
+
+/* ---------- состояние игры ---------- */
+var CID = 0;
+var G = {
+  state:'menu',
+  shift:1, served:0, target:4, money:0, rep:3, combo:0, bestCombo:0,
+  tray:{patty:0, veggie:0},
+  ready:[],            // готовые бургеры (массивы ингредиентов)
+  queue:[],            // очередь клиентов
+  spawnT:0, frontKey:0,
+  player:{x:250, y:190, dir:'down', anim:0, moving:false},
+  cfg:null,
+  grill:null, cut:null, asm:{stack:[], err:0},
+  mods:{walk:1, grillZone:1, cutZone:1, patience:1, tip:1, asmErr:1},
+  taken:[],
+  floats:[], toastT:0, t:0,
+  muted:false,
+  totalServed:0, totalLeftAngry:0
+};
+
+/* ---------- утилиты ---------- */
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function rnd(a,b){ return a+Math.random()*(b-a); }
+function irnd(a,b){ return Math.floor(rnd(a,b+1)); }
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function shade(hex,f){
+  var n=parseInt(hex.slice(1),16);
+  var r=Math.round(((n>>16)&255)*f), g=Math.round(((n>>8)&255)*f), b=Math.round((n&255)*f);
+  return 'rgb('+r+','+g+','+b+')';
+}
+function orderEq(a,b){
+  if(a.length!==b.length) return false;
+  for(var i=0;i<a.length;i++) if(a[i]!==b[i]) return false;
+  return true;
+}
+function orderPrice(o){
+  var s=0; for(var i=0;i<o.length;i++) s+=ING[o[i]].price; return s;
+}
+
+/* ---------- звук (Web Audio, без файлов) ---------- */
+var AC=null;
+function actx(){
+  if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ AC=false; } }
+  return AC;
+}
+function beep(freq,dur,type,vol,slide){
+  if(G.muted) return;
+  var a=actx(); if(!a) return;
+  try{
+    var o=a.createOscillator(), g=a.createGain();
+    o.type=type||'square'; o.frequency.setValueAtTime(freq,a.currentTime);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(40,freq+slide),a.currentTime+dur);
+    g.gain.setValueAtTime(vol||0.05,a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+dur);
+    o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+dur);
+  }catch(e){}
+}
+var SFX = {
+  click:function(){ beep(520,0.05,'square',0.045); },
+  good: function(){ beep(660,0.07,'square',0.05); setTimeout(function(){beep(990,0.12,'square',0.05);},70); },
+  coin: function(){ beep(880,0.05,'square',0.045); setTimeout(function(){beep(1320,0.11,'square',0.045);},60); },
+  bad:  function(){ beep(170,0.16,'sawtooth',0.05,-70); },
+  chop: function(){ beep(320,0.035,'square',0.05); },
+  serve:function(){ beep(523,0.07,'square',0.05); setTimeout(function(){beep(784,0.07,'square',0.05);},70); setTimeout(function(){beep(1046,0.14,'square',0.05);},140); },
+  arrive:function(){ beep(740,0.07,'triangle',0.035); },
+  angry:function(){ beep(300,0.1,'sawtooth',0.05,-120); setTimeout(function(){beep(200,0.18,'sawtooth',0.05,-80);},90); }
+};
+
+/* ---------- атлас иконок ингредиентов ---------- */
+function drawIng(g,id,x,y){
+  function r(a,b,w,h,c){ g.fillStyle=c; g.fillRect(x+a,y+b,w,h); }
+  if(id==='bun_bottom'){
+    r(2,6,12,5,'#d99a52'); r(2,6,12,1,'#eab777'); r(3,11,10,2,'#b87b34'); r(3,10,10,1,'#c98a44');
+  }else if(id==='bun_top'){
+    r(2,6,12,4,'#e5a95e'); r(3,4,10,2,'#e5a95e'); r(5,3,6,1,'#e5a95e'); r(3,6,10,1,'#f2c07a');
+    r(5,5,2,1,'#fff0c8'); r(9,5,2,1,'#fff0c8'); r(7,4,2,1,'#fff0c8');
+  }else if(id==='patty'){
+    r(1,8,14,4,'#7a4526'); r(2,7,12,1,'#8f5330'); r(2,12,12,1,'#5e3520'); r(4,9,3,1,'#96573a');
+  }else if(id==='cheese'){
+    r(1,7,14,3,'#f7c948'); r(2,6,12,1,'#ffd968'); r(2,10,3,2,'#f7c948'); r(11,10,3,2,'#f7c948'); r(6,10,4,1,'#f7c948');
+  }else if(id==='veggie'){
+    r(3,8,10,4,'#5fbf4a'); r(1,7,6,3,'#79d45f'); r(9,7,6,3,'#79d45f'); r(4,6,8,2,'#8fe072'); r(6,10,4,1,'#4aa838');
+  }else if(id==='sauce'){
+    r(2,9,12,3,'#e8556d'); r(3,6,4,3,'#e8556d'); r(9,7,4,2,'#e8556d'); r(4,10,3,1,'#ff8ba0');
+  }else if(id==='burger'){
+    r(2,3,12,3,'#e5a95e'); r(1,6,14,2,'#5fbf4a'); r(1,8,14,3,'#7a4526'); r(2,11,12,2,'#d99a52');
+  }
+}
+(function buildAtlas(){
+  var cv=document.createElement('canvas'); cv.width=16*ING_ORDER.length; cv.height=16;
+  var g=cv.getContext('2d');
+  for(var i=0;i<ING_ORDER.length;i++) drawIng(g,ING_ORDER[i],i*16,0);
+  var url=cv.toDataURL();
+  var css='.ic{background-image:url('+url+');background-size:'+(16*ING_ORDER.length)+'px 16px;}';
+  css+='.ic.s{background-size:'+(11*ING_ORDER.length)+'px 11px;}';
+  css+='.ic.b{background-size:'+(22*ING_ORDER.length)+'px 22px;}';
+  for(var j=0;j<ING_ORDER.length;j++) css+='.ic-'+ING_ORDER[j]+'{background-position:-'+(j*16)+'px 0;}';
+  var st=document.createElement('style'); st.textContent=css; document.head.appendChild(st);
+})();
+function icHTML(id,cls){
+  return '<span class="ic ic-'+id+(cls?(' '+cls):'')+'"></span>';
+}
+function orderRowHTML(order){
+  var s=''; for(var i=0;i<order.length;i++) s+=icHTML(order[i]);
+  return s;
+}
+function orderColHTML(order){
+  var s=''; for(var i=order.length-1;i>=0;i--) s+=icHTML(order[i],'s');
+  return s;
+}
+
+/* ============================================================
+   ЛОГИКА
+   ============================================================ */
+
+function shiftCfg(s){
+  return {
+    customers:   [0,4,6,8,10][clamp(s,0,4)] || 10,
+    patience:    Math.max(16, 32 - s*3),
+    spawnEvery:  Math.max(6, 14 - s*2),
+    maxQueue:    Math.min(3, 1 + Math.ceil(s/2)),
+    grillSpeed:  0.30 + 0.05*s,
+    grillZoneW:  Math.max(0.17, 0.36 - 0.03*s),
+    cutSpeed:    0.60 + 0.13*s,
+    cutZoneW:    Math.max(0.13, 0.24 - 0.02*s),
+    cutNeed:     2 + Math.floor(s/2)
+  };
+}
+
+function genOrder(shift){
+  var arr=['bun_bottom'];
+  var maxM=Math.min(4, 1 + Math.floor((shift+1)/2));
+  var minM=shift>=3?2:1;
+  var n=minM+Math.floor(Math.random()*(maxM-minM+1));
+  var patties=0, sauces=0;
+  for(var i=0;i<n;i++){
+    var pool=['patty','cheese','veggie','sauce'];
+    if(patties>=2) pool=pool.filter(function(p){return p!=='patty';});
+    if(sauces>=1)  pool=pool.filter(function(p){return p!=='sauce';});
+    var p=pick(pool);
+    if(p==='patty') patties++;
+    if(p==='sauce') sauces++;
+    arr.push(p);
+  }
+  arr.push('bun_top');
+  return arr;
+}
+
+function addCustomer(){
+  var cfg=G.cfg;
+  var sp=pick(SPECIES_KEYS);
+  var order=genOrder(G.shift);
+  var base=cfg.patience*G.mods.patience;
+  var p=base*rnd(0.85,1.15);
+  G.queue.push({id:++CID, species:sp, order:order, patience:p, maxPatience:p, bob:rnd(0,6.28)});
+  SFX.arrive();
+}
+
+function resetAsm(){ G.asm.stack=[]; G.asm.err=0; }
+
+function updateQueue(dt){
+  if(!G.cfg) return;
+  if(G.queue.length < G.cfg.maxQueue){
+    G.spawnT-=dt;
+    if(G.spawnT<=0){
+      addCustomer();
+      G.spawnT=G.cfg.spawnEvery*rnd(0.85,1.25);
+    }
+  }
+  var lost=false;
+  for(var i=G.queue.length-1;i>=0;i--){
+    var c=G.queue[i];
+    c.patience -= dt*(i===0?1:0.55);
+    if(c.patience<=0){
+      G.queue.splice(i,1);
+      G.rep--; G.combo=0; G.totalLeftAngry++;
+      SFX.angry();
+      toast('Клиент ушёл, не дождавшись!','#ff8b8b');
+      lost=true;
+      if(G.rep<=0){ gameOver(); return; }
+    }
+  }
+  var fk = G.queue.length ? G.queue[0].id : 0;
+  if(fk!==G.frontKey){
+    G.frontKey=fk; resetAsm();
+    if(G.state==='asm'){
+      if(!G.queue.length) endMini();
+      else renderAsmModal();
+    }
+  }
+}
+
+function tryServe(){
+  if(!G.queue.length){ toast('Клиентов пока нет','#ffd166'); return; }
+  if(!G.ready.length){ toast('Сначала соберите бургер','#ffd166'); return; }
+  var front=G.queue[0];
+  var idx=-1;
+  for(var i=0;i<G.ready.length;i++){ if(orderEq(G.ready[i],front.order)){ idx=i; break; } }
+  if(idx<0){
+    SFX.bad(); G.combo=0;
+    front.patience=Math.max(0.5, front.patience-2);
+    toast('Это не тот заказ!','#ff8b8b');
+    addFloat(240,120,'не то','#ff8b8b');
+    return;
+  }
+  G.ready.splice(idx,1);
+  var frac=clamp(front.patience/front.maxPatience,0,1);
+  var base=orderPrice(front.order);
+  var tip=Math.round(base*(0.4+0.6*frac)*G.mods.tip);
+  var mult=1+Math.min(G.combo,10)*0.1;
+  var total=Math.round((base+tip)*mult);
+  G.money+=total; G.combo++; G.bestCombo=Math.max(G.bestCombo,G.combo);
+  G.served++; G.totalServed++;
+  G.queue.shift();
+  SFX.serve();
+  toast('+'+total+' ₽'+(G.combo>1?'   серия ×'+G.combo.toFixed(1):''),'#7ef07e');
+  addFloat(250,110,'+'+total,'#ffe066');
+  if(G.served>=G.target){ endShift(); }
+}
+
+function endShift(){
+  if(G.shift>=TOTAL_SHIFTS){ G.state='win'; showWin(); return; }
+  G.state='shiftend';
+  showShiftEnd();
+}
+
+function gameOver(){
+  G.state='gameover';
+  showGameOver();
+}
+
+/* ---------- запуск смены ---------- */
+function startShift(){
+  G.cfg=shiftCfg(G.shift);
+  G.served=0; G.target=G.cfg.customers;
+  G.queue=[]; G.ready=[]; G.tray={patty:0,veggie:0};
+  resetAsm(); G.frontKey=0;
+  G.spawnT=1.2;
+  G.player.x=250; G.player.y=190; G.player.dir='down';
+  G.floats=[];
+  addCustomer();
+  G.state='play';
+  closeModal();
+  toast('Смена '+G.shift+'! Обслужите '+G.target+' клиентов','#9fe8ff');
+  updateHUD();
+}
+
+/* ---------- мини-игра: гриль ---------- */
+function openGrill(){
+  var cfg=G.cfg;
+  G.grill={
+    t:0, speed:cfg.grillSpeed,
+    zoneA:0.45, zoneW:clamp(cfg.grillZoneW*G.mods.grillZone,0.1,0.42),
+    done:false
+  };
+  G.state='grill';
+  renderGrillModal();
+  updateGrillBar();
+}
+function updateGrill(dt){
+  var g=G.grill; if(!g) return;
+  g.t += g.speed*dt;
+  if(g.t>=1){ grillTake(true); return; }
+  updateGrillBar();
+}
+function updateGrillBar(){
+  var g=G.grill, m=document.getElementById('grillMarker');
+  if(m&&g) m.style.left=(clamp(g.t,0,1)*100)+'%';
+}
+function grillTake(auto){
+  var g=G.grill; if(!g||g.done) return;
+  g.done=true;
+  var zEnd=g.zoneA+g.zoneW;
+  if(!auto && g.t>=g.zoneA && g.t<zEnd){
+    G.tray.patty++;
+    SFX.good(); toast('Котлета идеальна!','#7ef07e');
+    endMini();
+  }else if(!auto && g.t<g.zoneA){
+    g.done=false; g.t=0;
+    SFX.bad(); toast('Сырая! Опусти обратно','#ffd166');
+    updateGrillBar();
+  }else{
+    SFX.bad(); toast('Сгорела! Возьми новую','#ff8b8b');
+    endMini();
+  }
+}
+function renderGrillModal(){
+  var g=G.grill;
+  var zA=Math.round(g.zoneA*100), zW=Math.round(g.zoneW*100);
+  var html='<div class="modal"><div class="panel">'
+    +'<h3>Г Р И Л Ь</h3>'
+    +'<div class="bar">'
+    +'<div class="zone z-raw" style="left:0;width:'+zA+'%"></div>'
+    +'<div class="zone z-ok" style="left:'+zA+'%;width:'+zW+'%"></div>'
+    +'<div class="zone z-burn" style="left:'+(zA+zW)+'%;right:0"></div>'
+    +'<div class="barlabel"><span>сырая</span><span>идеально</span><span>горит</span></div>'
+    +'<div class="marker" id="grillMarker" style="left:0%"></div>'
+    +'</div>'
+    +'<p>Пробел — снять котлету</p>'
+    +'<button class="btn" id="grillBtn">СНЯТЬ</button> '
+    +'<button class="btn dim" id="miniQuit">Уйти</button>'
+    +'</div></div>';
+  openModal(html);
+  document.getElementById('grillBtn').onclick=function(){ grillTake(false); };
+  document.getElementById('miniQuit').onclick=function(){ endMini(); };
+}
+
+/* ---------- мини-игра: нарезка ---------- */
+function openCut(){
+  var cfg=G.cfg;
+  G.cut={
+    pos:0, dir:1, hits:0,
+    need:cfg.cutNeed,
+    speed:cfg.cutSpeed,
+    zoneW:clamp(cfg.cutZoneW*G.mods.cutZone,0.08,0.4),
+    zoneC:0.5
+  };
+  G.state='cut';
+  renderCutModal();
+  updateCutBar();
+}
+function updateCut(dt){
+  var c=G.cut; if(!c) return;
+  c.pos += c.dir*c.speed*dt;
+  if(c.pos>1){ c.pos=1; c.dir=-1; }
+  if(c.pos<0){ c.pos=0; c.dir=1; }
+  updateCutBar();
+}
+function updateCutBar(){
+  var c=G.cut, m=document.getElementById('cutMarker');
+  if(m&&c) m.style.left=(c.pos*100)+'%';
+}
+function cutHit(){
+  var c=G.cut; if(!c) return;
+  if(Math.abs(c.pos-c.zoneC)<=c.zoneW/2){
+    c.hits++; SFX.chop();
+    if(c.hits>=c.need){
+      G.tray.veggie++;
+      SFX.good(); toast('Овощи нарезаны!','#7ef07e');
+      endMini(); return;
+    }
+    c.zoneC=rnd(0.22,0.78);
+    renderCutModal();
+    updateCutBar();
+  }else{
+    SFX.bad(); toast('Мимо!','#ffd166');
+    var d=document.getElementById('cutDots');
+    if(d){ d.classList.remove('shake'); void d.offsetWidth; d.classList.add('shake'); }
+  }
+}
+function renderCutModal(){
+  var c=G.cut;
+  var zL=Math.round((c.zoneC-c.zoneW/2)*100), zW=Math.round(c.zoneW*100);
+  var dots='';
+  for(var i=0;i<c.need;i++) dots += (i<c.hits?'●':'○');
+  var html='<div class="modal"><div class="panel">'
+    +'<h3>Н А Р Е З К А</h3>'
+    +'<div class="dots" id="cutDots">'+dots+'</div>'
+    +'<div class="bar" style="height:22px">'
+    +'<div class="zone z-bad" style="left:0;right:0"></div>'
+    +'<div class="zone z-ok" style="left:'+zL+'%;width:'+zW+'%"></div>'
+    +'<div class="marker" id="cutMarker" style="left:0%"></div>'
+    +'</div>'
+    +'<p>Пробел — рубить, когда белая метка в зелёной зоне</p>'
+    +'<button class="btn" id="cutBtn">РУБИТЬ</button> '
+    +'<button class="btn dim" id="miniQuit">Уйти</button>'
+    +'</div></div>';
+  openModal(html);
+  document.getElementById('cutBtn').onclick=function(){ cutHit(); };
+  document.getElementById('miniQuit').onclick=function(){ endMini(); };
+}
+
+/* ---------- мини-игра: сборка ---------- */
+function openAsm(){
+  if(!G.queue.length){ toast('Нет заказов','#ffd166'); return; }
+  G.state='asm';
+  renderAsmModal();
+}
+function updateAsm(dt){ /* ничего не тикает, время идёт через терпение */ }
+
+function asmClick(id){
+  var target=G.queue.length?G.queue[0].order:null;
+  if(!target) return;
+  var next=target[G.asm.stack.length];
+  if(!next) return;
+  if(id!==next){
+    G.asm.err=1;
+    SFX.bad();
+    if(G.queue[0]) G.queue[0].patience=Math.max(0.5, G.queue[0].patience-1.4*G.mods.asmErr);
+    var w=document.getElementById('asmWrap');
+    if(w){ w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake'); }
+    return;
+  }
+  G.asm.err=0;
+  G.asm.stack.push(id);
+  SFX.click();
+  if(G.asm.stack.length>=target.length){
+    // готово!
+    var used=G.asm.stack.slice();
+    for(var i=0;i<used.length;i++){
+      if(used[i]==='patty') G.tray.patty--;
+      if(used[i]==='veggie') G.tray.veggie--;
+    }
+    G.ready.push(used);
+    if(G.ready.length>6) G.ready.shift();
+    resetAsm();
+    SFX.good();
+    toast('Бургер готов! Отнесите его к окну','#7ef07e');
+    endMini();
+    return;
+  }
+  renderAsmModal();
+}
+function canUse(id){
+  if(FREE[id]) return true;
+  if(id==='patty') return G.tray.patty>0;
+  if(id==='veggie') return G.tray.veggie>0;
+  return true;
+}
+function renderAsmModal(){
+  var front=G.queue.length?G.queue[0]:null;
+  var target=front?front.order:[];
+  var build='', rec='';
+  var i;
+  for(i=0;i<G.asm.stack.length;i++) build+=icHTML(G.asm.stack[i],'s');
+  for(i=target.length-1;i>=0;i--) rec+=icHTML(target[i],'s');
+  var need={};
+  for(i=0;i<target.length;i++) need[target[i]]=(need[target[i]]||0)+1;
+
+  var btns='';
+  var list=['bun_bottom','bun_top','patty','cheese','veggie','sauce'];
+  for(i=0;i<list.length;i++){
+    var id=list[i];
+    var dis=!canUse(id);
+    var cnt = FREE[id] ? '∞' : (id==='patty'? G.tray.patty : G.tray.veggie);
+    var mark = need[id] ? ' style="border-color:#ffe066"' : '';
+    btns+='<button class="ingbtn'+(dis?' dis':'')+'" data-ing="'+id+'"'+(dis?' disabled':'')+mark+'>'
+        + icHTML(id,'s') + '<i>'+ING_SHORT[id]+'</i><b>'+cnt+'</b></button>';
+  }
+
+  var html='<div class="modal"><div class="panel">'
+    +'<h3>С Б О Р К А</h3>'
+    +(front? '<p style="margin:0 0 5px">'+SPECIES[front.species].name+' ждёт бургер:</p>' : '<p>Нет заказов</p>')
+    +'<div class="asmwrap" id="asmWrap">'
+      +'<div class="stackbox"><div class="cap">ЗАКАЗ</div><div class="col">'+rec+'</div></div>'
+      +'<div class="stackbox"><div class="cap">СОБРАНО</div><div class="col">'+build+'</div></div>'
+    +'</div>'
+    +'<div class="ingbtns" style="margin-top:7px">'+btns+'</div>'
+    +'<p style="margin:6px 0 4px">Жёлтая рамка — этот ингредиент есть в заказе</p>'
+    +'<button class="btn dim" id="miniQuit">УЙТИ (E)</button>'
+    +'</div></div>';
+  openModal(html);
+  document.getElementById('miniQuit').onclick=function(){ endMini(); };
+  var all=overlay.querySelectorAll('[data-ing]');
+  for(i=0;i<all.length;i++){
+    all[i].onclick=function(){ asmClick(this.getAttribute('data-ing')); };
+  }
+}
+
+/* ---------- общее для мини-игр ---------- */
+function endMini(){
+  G.grill=null; G.cut=null;
+  G.state='play';
+  closeModal();
+}
+
+/* ---------- взаимодействие ---------- */
+function nearestStation(){
+  var p=G.player, best=null, bd=36;
+  for(var i=0;i<STATIONS.length;i++){
+    var st=STATIONS[i];
+    var d=Math.hypot(p.x-st.ax, p.y-st.ay);
+    if(d<bd){ bd=d; best=st; }
+  }
+  return best;
+}
+function interact(){
+  if(G.state!=='play') return;
+  var st=nearestStation();
+  if(!st) return;
+  if(st.id==='grill') openGrill();
+  else if(st.id==='cut') openCut();
+  else if(st.id==='asm') openAsm();
+  else if(st.id==='window') tryServe();
+  else if(st.id==='bin'){
+    if(G.ready.length){ G.ready=[]; SFX.click(); toast('Готовые бургеры выброшены','#ffd166'); }
+    else { toast('Нечего выбрасывать','#a99cc0'); }
+  }
+}
+
+/* ---------- отрисовка сцены ---------- */
+function tiles(x0,y0,x1,y1,s,c1,c2){
+  for(var y=y0;y<y1;y+=s){
+    for(var x=x0;x<x1;x+=s){
+      var i=((x/s|0)+(y/s|0))%2;
+      ctx.fillStyle=i?c1:c2;
+      ctx.fillRect(x,y,Math.min(s,x1-x),Math.min(s,y1-y));
+    }
+  }
+}
+function px(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w,h); }
+
+function drawScene(){
+  // улица / зал
+  tiles(0,0,W,78,16,'#4a3a4e','#443548');
+  // окна в зале
+  px(30,10,70,26,'#5f4a63'); px(34,14,62,18,'#6d5670');
+  px(370,10,70,26,'#5f4a63'); px(374,14,62,18,'#6d5670');
+  // стойка
+  px(0,78,W,20,'#8a6a4a');
+  px(0,78,W,4,'#b08a5e');
+  px(0,95,W,3,'#5f4630');
+  // кухня
+  tiles(0,98,W,H-98,20,'#3b4650','#364049');
+  // стены
+  px(0,0,10,H,'#221a2b'); px(W-10,0,10,H,'#221a2b');
+  px(0,H-10,W,10,'#221a2b'); px(0,98,W,2,'#221a2b');
+
+  drawStations();
+  drawBin();
+  drawPlayer();
+  drawQueue();
+  drawFloats();
+}
+
+function drawStations(){
+  for(var i=0;i<STATIONS.length;i++){
+    var st=STATIONS[i];
+    if(st.id==='window') continue;
+    if(st.id==='bin') continue;
+    // тень
+    px(st.x+3, st.y+st.h-1, st.w, 6, 'rgba(0,0,0,0.3)');
+    // корпус
+    px(st.x, st.y, st.w, st.h, '#c8ccd4');
+    px(st.x, st.y, st.w, 6, '#e6eaf0');
+    px(st.x, st.y+st.h-9, st.w, 9, '#9aa0ac');
+    ctx.strokeStyle='#5a606c'; ctx.lineWidth=2;
+    ctx.strokeRect(st.x+1, st.y+1, st.w-2, st.h-2);
+
+    if(st.id==='grill'){
+      px(st.x+8, st.y+10, st.w-16, 30, '#3a3238');
+      for(var gx=st.x+12; gx<st.x+st.w-12; gx+=9) px(gx, st.y+13, 4, 24, '#6b5a60');
+      for(var lx=st.x+14; lx<st.x+st.w-14; lx+=18) px(lx, st.y+22, 8, 3, '#ff7b3a');
+      px(st.x+10, st.y+42, st.w-20, 4, '#8a8078');
+    }else if(st.id==='cut'){
+      px(st.x+8, st.y+10, st.w-16, 34, '#b07a44');
+      px(st.x+8, st.y+10, st.w-16, 4, '#cf9a60');
+      // нож
+      px(st.x+st.w-40, st.y+14, 24, 5, '#d8dde6'); px(st.x+st.w-18, st.y+13, 6, 7, '#4a3a2a');
+      // овощи
+      px(st.x+18, st.y+22, 12, 10, '#5fbf4a'); px(st.x+34, st.y+20, 12, 12, '#e8556d');
+    }else if(st.id==='asm'){
+      px(st.x+8, st.y+10, st.w-16, st.h-22, '#a8aeb8');
+      px(st.x+10, st.y+12, st.w-20, 5, '#cfd5dd');
+      // тарелка с булочкой
+      px(st.x+st.w/2-16, st.y+34, 32, 5, '#e8ecf2');
+      px(st.x+st.w/2-12, st.y+28, 24, 6, '#e5a95e');
+      px(st.x+st.w/2-12, st.y+24, 24, 4, '#d99a52');
+    }
+    drawLabel(st);
+  }
+  // окно выдачи
+  var w=STATIONS[4];
+  px(w.x, w.y-6, w.w, 6, '#b08a5e');
+  ctx.strokeStyle='#ffe066'; ctx.lineWidth=2; ctx.strokeRect(w.x-2, w.y-10, w.w+4, 8);
+}
+function drawLabel(st){
+  ctx.font='bold 9px "Courier New",monospace';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  var label=st.label;
+  var w=ctx.measureText(label).width+8;
+  px(st.x+st.w/2-w/2, st.y+st.h-16, w, 12, 'rgba(20,12,28,0.75)');
+  ctx.fillStyle='#e8e0f2';
+  ctx.fillText(label, st.x+st.w/2, st.y+st.h-10);
+}
+function drawBin(){
+  var st=null;
+  for(var i=0;i<STATIONS.length;i++) if(STATIONS[i].id==='bin') st=STATIONS[i];
+  if(!st) return;
+  px(st.x+3, st.y+st.h-1, st.w, 6, 'rgba(0,0,0,0.3)');
+  px(st.x+6, st.y+6, st.w-12, st.h-6, '#4f5a66');
+  px(st.x+2, st.y, st.w-4, 8, '#6b7683');
+  px(st.x+14, st.y+14, st.w-28, 4, '#2f3840');
+  px(st.x+14, st.y+24, st.w-28, 4, '#2f3840');
+  drawLabel({label:'Мусор', x:st.x, y:st.y, w:st.w, h:st.h});
+}
+
+function drawPlayer(){
+  var p=G.player;
+  var x=Math.round(p.x), y=Math.round(p.y);
+  var bob = p.moving ? Math.round(Math.sin(p.anim)*1.4) : 0;
+  var step = p.moving ? Math.sign(Math.sin(p.anim)) : 0;
+  // тень
+  px(x-9, y-3, 18, 5, 'rgba(0,0,0,0.28)');
+
+  var by=y-9+bob;
+  // ноги
+  px(x-6, by, 5, 9-Math.max(0,step), '#3a4a6a');
+  px(x+1, by, 5, 9+Math.min(0,step), '#3a4a6a');
+  px(x-7, y-2, 7, 3, '#241a2e');
+  px(x+1, y-2, 7, 3, '#241a2e');
+  // тело
+  px(x-7, by-11, 14, 12, '#d94f4f');
+  px(x-5, by-11, 10, 12, '#f2f2f2');   // фартук
+  px(x-7, by-11, 2, 12, '#a83a3a');
+  px(x+5, by-11, 2, 12, '#a83a3a');
+  px(x-2, by-9, 4, 4, '#ffd166');      // пуговица/деталь
+  // руки
+  px(x-9, by-9+bob, 3, 8, '#f2c49a');
+  px(x+6, by-9-bob, 3, 8, '#f2c49a');
+  // голова
+  var hy=by-21;
+  px(x-6, hy, 12, 11, '#f2c49a');
+  px(x-6, hy, 12, 2, '#e0b088');
+  // глаза по направлению
+  if(p.dir==='up'){
+    px(x-6, hy, 12, 11, '#e0b088');
+    px(x-6, hy+8, 12, 3, '#c99a72');
+  }else if(p.dir==='left'){
+    px(x-5, hy+4, 2, 3, '#241a2e');
+    px(x-1, hy+4, 2, 3, '#241a2e');
+  }else if(p.dir==='right'){
+    px(x+1, hy+4, 2, 3, '#241a2e');
+    px(x+5, hy+4, 2, 3, '#241a2e');
+  }else{
+    px(x-4, hy+4, 2, 3, '#241a2e');
+    px(x+2, hy+4, 2, 3, '#241a2e');
+    px(x-2, hy+8, 4, 1, '#c98a6a');
+  }
+  // колпак
+  px(x-7, hy-6, 14, 5, '#f7f7f7');
+  px(x-8, hy-4, 16, 4, '#e8ecf0');
+  px(x-5, hy-9, 10, 4, '#ffffff');
+  px(x-3, hy-11, 6, 3, '#ffffff');
+  px(x-7, hy-1, 14, 2, '#d5dbe2');
+}
+
+function drawQueue(){
+  var pos=[248, 140, 350];
+  for(var i=G.queue.length-1;i>=0;i--){
+    var c=G.queue[i];
+    var x=pos[Math.min(i,2)];
+    var s=(i===0)?1:0.82;
+    drawCustomer(c, x, 76, s, i!==0);
+  }
+}
+function drawCustomer(c, cx, feetY, s, dim){
+  var sp=SPECIES[c.species];
+  var body = dim? shade(sp.body,0.62) : sp.body;
+  var dark = dim? shade(sp.dark,0.62) : sp.dark;
+  function R(a,b,w,h,col){ ctx.fillStyle=col; ctx.fillRect(Math.round(cx+a*s), Math.round(feetY+b*s), Math.ceil(w*s), Math.ceil(h*s)); }
+  var t=G.t*1.6 + c.bob;
+  var bob=Math.round(Math.sin(t)*1.2);
+
+  // тень на стойке
+  R(-9,-2,18,3,'rgba(0,0,0,0.22)');
+
+  // туловище
+  var by=-16+bob;
+  R(-9, by, 18, 16, body);
+  R(-9, by+12, 18, 4, dark);
+  R(-3, by+4, 6, 8, shade(sp.body,0.85));
+  // лапки на стойке
+  R(-8, -4, 5, 4, dark);
+  R(3, -4, 5, 4, dark);
+
+  // голова
+  var hy=by-15;
+  R(-9, hy, 18, 16, body);
+  R(-9, hy, 18, 3, shade(sp.body,1.12));
+  // уши
+  if(sp.ear==='point'){
+    R(-10, hy-5, 5, 7, body); R(-9, hy-3, 3, 4, sp.inner);
+    R(5, hy-5, 5, 7, body);   R(6, hy-3, 3, 4, sp.inner);
+  }else if(sp.ear==='round'){
+    R(-11, hy-5, 6, 6, body); R(-9, hy-3, 3, 3, sp.inner);
+    R(5, hy-5, 6, 6, body);   R(6, hy-3, 3, 3, sp.inner);
+  }else if(sp.ear==='flop'){
+    R(-12, hy-1, 4, 10, dark); R(-11, hy+1, 3, 6, sp.inner);
+    R(8, hy-1, 4, 10, dark);   R(8, hy+1, 3, 6, sp.inner);
+  }else if(sp.ear==='long'){
+    R(-7, hy-11, 4, 12, body); R(-6, hy-9, 2, 8, sp.inner);
+    R(3, hy-11, 4, 12, body);  R(4, hy-9, 2, 8, sp.inner);
+  }else if(sp.ear==='eyes'){
+    R(-8, hy-6, 6, 6, body); R(-7, hy-5, 4, 4, '#ffffff'); R(-6, hy-4, 2, 2, '#241a2e');
+    R(2, hy-6, 6, 6, body);  R(3, hy-5, 4, 4, '#ffffff');  R(4, hy-4, 2, 2, '#241a2e');
+  }else{ // tuft
+    R(-7, hy-6, 4, 6, dark); R(3, hy-6, 4, 6, dark);
+  }
+  // морда
+  R(-3, hy+7, 6, 5, shade(sp.body,1.15));
+  // глаза
+  var blink = (Math.sin(G.t*0.7 + c.bob*3) > 0.96);
+  if(blink){
+    R(-5, hy+7, 3, 1, '#241a2e'); R(2, hy+7, 3, 1, '#241a2e');
+  }else{
+    R(-5, hy+5, 3, 4, '#241a2e'); R(2, hy+5, 3, 4, '#241a2e');
+    R(-5, hy+5, 1, 1, '#ffffff'); R(2, hy+5, 1, 1, '#ffffff');
+  }
+  // нос
+  R(-1, hy+9, 2, 2, '#241a2e');
+
+  // полоска терпения
+  if(!dim){
+    var f=clamp(c.patience/c.maxPatience,0,1);
+    var bw=20, bx=cx-bw/2, byy=feetY+hy*s-9;
+    ctx.fillStyle='#120d18'; ctx.fillRect(Math.round(bx-1), Math.round(byy-1), bw+2, 5);
+    ctx.fillStyle = f>0.5?'#5fdc6a':(f>0.25?'#ffd166':'#ff5c5c');
+    ctx.fillRect(Math.round(bx), Math.round(byy), Math.round(bw*f), 3);
+  }
+}
+
+function addFloat(x,y,text,col){
+  G.floats.push({x:x, y:y, text:text, col:col||'#fff', t:1.1, life:1.1});
+}
+function drawFloats(){
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(var i=0;i<G.floats.length;i++){
+    var f=G.floats[i];
+    var a=clamp(f.t/f.life,0,1);
+    ctx.globalAlpha=a;
+    ctx.font='bold 13px "Courier New",monospace';
+    ctx.fillStyle='#120d18';
+    ctx.fillText(f.text, f.x+1, f.y+1);
+    ctx.fillStyle=f.col;
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.globalAlpha=1;
+  }
+}
+
+/* ---------- интерфейс ---------- */
+function openModal(html){
+  overlay.innerHTML=html;
+  overlay.classList.add('active');
+}
+function closeModal(){
+  overlay.innerHTML='';
+  overlay.classList.remove('active');
+}
+var toastEl=null;
+function toast(msg,col){
+  if(!toastEl){
+    toastEl=document.createElement('div');
+    toastEl.className='toast';
+    worldui.appendChild(toastEl);
+  }
+  toastEl.textContent=msg;
+  toastEl.style.color=col||'#fff';
+  toastEl.classList.add('show');
+  G.toastT=1.8;
+}
+
+function updateHUD(){
+  elMoney.textContent = G.money + ' ₽';
+  elCombo.textContent = 'серия: ' + G.combo + (G.bestCombo>0?(' · макс '+G.bestCombo):'');
+  var full='';
+  for(var i=0;i<3;i++) full += (i<G.rep?'♥':'♡');
+  elHearts.textContent = full;
+  elShift.textContent = 'Смена ' + G.shift + ' · ' + G.served + '/' + G.target;
+
+  var front = G.queue.length? G.queue[0] : null;
+  if(front){
+    elWho.textContent = SPECIES[front.species].name + ' ждёт';
+    if(elOrder.getAttribute('data-key')!==front.id+':'+front.order.join(',')){
+      elOrder.innerHTML = orderRowHTML(front.order);
+      elOrder.setAttribute('data-key', front.id+':'+front.order.join(','));
+    }
+  }else{
+    elWho.textContent = 'Клиентов нет';
+    if(elOrder.getAttribute('data-key')!=='none'){ elOrder.innerHTML='<span style="color:#8c7aa0;font-size:10px">—</span>'; elOrder.setAttribute('data-key','none'); }
+  }
+  var tray = icHTML('patty')+'×'+G.tray.patty+'  '+icHTML('veggie')+'×'+G.tray.veggie
+           + '   <span style="color:#8c7aa0">|</span>   готово '+icHTML('burger')+'×'+G.ready.length;
+  elTray.innerHTML = tray;
+}
+
+var promptEl=null;
+function updatePrompt(){
+  if(!promptEl){
+    promptEl=document.createElement('div');
+    promptEl.className='prompt';
+    worldui.appendChild(promptEl);
+  }
+  var st = (G.state==='play')? nearestStation() : null;
+  if(st){
+    promptEl.style.display='block';
+    promptEl.style.left = st.ax+'px';
+    promptEl.style.top  = (st.ay-30)+'px';
+    promptEl.textContent = 'E — '+st.label;
+  }else{
+    promptEl.style.display='none';
+  }
+}
+
+/* ---------- экраны ---------- */
+function showMenu(){
+  G.state='menu';
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h1>БУРГЕРНАЯ У ЗВЕРЕЙ</h1>'
+    +'<p style="color:#9fe8ff">Готовь бургеры, обслуживай зверей,<br>продержись 4 смены!</p>'
+    +'<button class="btn" id="mPlay">ИГРАТЬ</button>'
+    +'<button class="btn alt" id="mHow">КАК ИГРАТЬ</button>'
+    +'<button class="btn dim" id="mMute">ЗВУК: ВКЛ</button>'
+    +'</div></div>'
+  );
+  document.getElementById('mPlay').onclick=function(){ actx(); startShift(); };
+  document.getElementById('mHow').onclick=function(){ showHow(); };
+  document.getElementById('mMute').onclick=function(){
+    G.muted=!G.muted;
+    this.textContent='ЗВУК: '+(G.muted?'ВЫКЛ':'ВКЛ');
+  };
+}
+function showHow(){
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h2>КАК ИГРАТЬ</h2>'
+    +'<p style="text-align:left">'
+    +'1. Возле <b>Гриля</b> (E) жарь котлету — сними её, пока метка в зелёной зоне.<br>'
+    +'2. У <b>Нарезки</b> (E) нарежь овощи — руби, пока метка в зелёной зоне.<br>'
+    +'3. За <b>Сборкой</b> (E) собери бургер в порядке заказа.<br>'
+    +'4. Подойди к <b>окну выдачи</b> (E) и отдай бургер клиенту.<br>'
+    +'5. Мусорка (E) выбрасывает готовые бургеры.'
+    +'</p>'
+    +'<p style="color:#ffd166">Клиенты ждут! Если терпение кончится — клиент уйдёт и вы потеряете ♥</p>'
+    +'<p style="color:#a99cc0">WASD / стрелки — ходить · E — действие · ESC — пауза</p>'
+    +'<button class="btn" id="hBack">НАЗАД</button>'
+    +'</div></div>'
+  );
+  document.getElementById('hBack').onclick=function(){ showMenu(); };
+}
+function showPause(){
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h2>ПАУЗА</h2>'
+    +'<button class="btn" id="pRes">ПРОДОЛЖИТЬ</button>'
+    +'<button class="btn alt" id="pRestart">НАЧАТЬ ЗАНОВО</button>'
+    +'<button class="btn dim" id="pMenu">В МЕНЮ</button>'
+    +'</div></div>'
+  );
+  document.getElementById('pRes').onclick=function(){ G.state=G.prevState||'play'; closeModal(); };
+  document.getElementById('pRestart').onclick=function(){ newGame(); };
+  document.getElementById('pMenu').onclick=function(){ showMenu(); };
+}
+function showShiftEnd(){
+  var pool=UPGRADES.filter(function(u){ return G.taken.indexOf(u.id)<0; });
+  var opts=[];
+  while(opts.length<3 && pool.length){ opts.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]); }
+  var cards='';
+  for(var i=0;i<opts.length;i++){
+    cards+='<button class="upcard" data-up="'+opts[i].id+'"><b>'+opts[i].name+'</b><br><i>'+opts[i].desc+'</i></button>';
+  }
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h2>СМЕНА '+G.shift+' ПРОЙДЕНА!</h2>'
+    +'<p>Заработано: <b style="color:#ffe066">'+G.money+' ₽</b> · Обслужено: <b>'+G.totalServed+'</b></p>'
+    +'<h3>ВЫБЕРИ УЛУЧШЕНИЕ</h3>'
+    +'<div id="upList">'+(cards||'<p>Все улучшения уже получены</p>')+'</div>'
+    +'<button class="btn" id="sNext" style="margin-top:6px">СЛЕДУЮЩАЯ СМЕНА</button>'
+    +'</div></div>'
+  );
+  var list=overlay.querySelectorAll('[data-up]');
+  for(var k=0;k<list.length;k++){
+    list[k].onclick=function(){
+      var id=this.getAttribute('data-up');
+      for(var j=0;j<UPGRADES.length;j++){
+        if(UPGRADES[j].id===id){ UPGRADES[j].apply(); G.taken.push(id); break; }
+      }
+      SFX.good();
+      var all=overlay.querySelectorAll('[data-up]');
+      for(var m=0;m<all.length;m++){ all[m].disabled=true; all[m].style.opacity='0.35'; }
+      this.style.opacity='1'; this.style.borderColor='#ffe066';
+      updateHUD();
+    };
+  }
+  document.getElementById('sNext').onclick=function(){ G.shift++; startShift(); };
+}
+function rank(){
+  if(G.money<350) return 'Стажёр';
+  if(G.money<800) return 'Повар';
+  if(G.money<1500) return 'Шеф-повар';
+  return 'Легенда бургерной';
+}
+function showGameOver(){
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h1 style="color:#ff8b8b">ЗАКРЫЛИСЬ!</h1>'
+    +'<p>Звери устали ждать и ушли.</p>'
+    +'<p class="big">'+G.money+' ₽</p>'
+    +'<p>Смена '+G.shift+' · обслужено '+G.totalServed+' · лучшая серия '+G.bestCombo+'</p>'
+    +'<button class="btn" id="gRetry">ЕЩЁ РАЗ</button>'
+    +'<button class="btn dim" id="gMenu">В МЕНЮ</button>'
+    +'</div></div>'
+  );
+  document.getElementById('gRetry').onclick=function(){ newGame(); };
+  document.getElementById('gMenu').onclick=function(){ showMenu(); };
+}
+function showWin(){
+  openModal(
+    '<div class="modal"><div class="panel">'
+    +'<h1>ПОБЕДА!</h1>'
+    +'<p style="color:#9fe8ff">Все смены пройдены, бургерная процветает!</p>'
+    +'<p class="big">'+G.money+' ₽</p>'
+    +'<p>Обслужено клиентов: <b>'+G.totalServed+'</b><br>Лучшая серия: <b>'+G.bestCombo+'</b></p>'
+    +'<h2 style="color:#ffe066">'+rank()+'</h2>'
+    +'<button class="btn" id="wRetry">ИГРАТЬ СНОВА</button>'
+    +'</div></div>'
+  );
+  document.getElementById('wRetry').onclick=function(){ newGame(); };
+}
+function newGame(){
+  G.shift=1; G.money=0; G.rep=3; G.combo=0; G.bestCombo=0;
+  G.totalServed=0; G.totalLeftAngry=0;
+  G.taken=[];
+  G.mods={walk:1, grillZone:1, cutZone:1, patience:1, tip:1, asmErr:1};
+  UPGRADES.forEach(function(u){ u.__done=false; });
+  startShift();
+}
+
+/* ---------- управление ---------- */
+var keys={};
+function keyId(e){
+  if(e.code){
+    if(e.code==='Space') return 'space';
+    if(e.code==='Escape') return 'escape';
+    if(e.code==='ArrowUp') return 'arrowup';
+    if(e.code==='ArrowDown') return 'arrowdown';
+    if(e.code==='ArrowLeft') return 'arrowleft';
+    if(e.code==='ArrowRight') return 'arrowright';
+    if(e.code.indexOf('Key')===0) return e.code.slice(3).toLowerCase();
+    if(e.code.indexOf('Digit')===0) return e.code.slice(5).toLowerCase();
+    if(e.code.indexOf('Numpad')===0) return e.code.slice(6).toLowerCase();
+  }
+  var k=(e.key||'').toLowerCase();
+  if(k===' ') k='space';
+  return k;
+}
+document.addEventListener('keydown',function(e){
+  var k=keyId(e);
+  var handled=false;
+  if(k==='escape'){
+    handled=true;
+    if(G.state==='play'){ G.prevState='play'; G.state='pause'; showPause(); }
+    else if(G.state==='pause'){ G.state='play'; closeModal(); }
+    else if(G.state==='grill'||G.state==='cut'||G.state==='asm'){ endMini(); }
+    return;
+  }
+  if(G.state==='asm'){
+    if(k==='e'||k==='space'){ handled=true; e.preventDefault(); endMini(); return; }  // E — выйти
+    if(k>='1' && k<='6'){
+      handled=true;
+      var list=['bun_bottom','bun_top','patty','cheese','veggie','sauce'];
+      asmClick(list[parseInt(k,10)-1]);
+      return;
+    }
+    return;
+  }
+  if(k==='space'||k==='e'||k==='enter'){
+    handled=true;
+    if(G.state==='play'){ interact(); return; }
+    if(G.state==='grill'){ grillTake(false); return; }
+    if(G.state==='cut'){ cutHit(); return; }
+  }
+  if(k==='arrowup'||k==='arrowdown'||k==='arrowleft'||k==='arrowright') handled=true;
+  if(handled) e.preventDefault();
+  keys[k]=true;
+},false);
+document.addEventListener('keyup',function(e){
+  var k=keyId(e);
+  keys[k]=false;
+  if(['arrowup','arrowdown','arrowleft','arrowright','space'].indexOf(k)>=0) e.preventDefault();
+},false);
+window.addEventListener('blur',function(){ keys={}; });
+
+/* ---------- тач ---------- */
+var touch={active:false, dx:0, dy:0};
+(function initTouch(){
+  if(!('ontouchstart' in window)) return;
+  var wrap=document.createElement('div');
+  wrap.id='touchui';
+  var layout=[
+    {k:'up',   x:52, y:186, t:'▲'},
+    {k:'left', x:16, y:220, t:'◀'},
+    {k:'down', x:52, y:222, t:'▼'},
+    {k:'right',x:88, y:220, t:'▶'}
+  ];
+  layout.forEach(function(b){
+    var el=document.createElement('div');
+    el.className='tbtn'; el.textContent=b.t;
+    el.style.left=b.x+'px'; el.style.top=(b.y-32)+'px';
+    el.addEventListener('pointerdown',function(ev){ ev.preventDefault(); touch.keys=touch.keys||{}; touch.keys[b.k]=true; syncTouch(); },{passive:false});
+    el.addEventListener('pointerup',function(ev){ ev.preventDefault(); touch.keys[b.k]=false; syncTouch(); },{passive:false});
+    el.addEventListener('pointerleave',function(){ touch.keys[b.k]=false; syncTouch(); });
+    wrap.appendChild(el);
+  });
+  var act=document.createElement('div');
+  act.className='tbtn'; act.textContent='E';
+  act.style.width='46px'; act.style.height='46px'; act.style.left='412px'; act.style.top='196px';
+  act.addEventListener('pointerdown',function(ev){
+    ev.preventDefault();
+    if(G.state==='play') interact();
+    else if(G.state==='grill') grillTake(false);
+    else if(G.state==='cut') cutHit();
+  },{passive:false});
+  wrap.appendChild(act);
+  worldui.appendChild(wrap);
+  function syncTouch(){
+    var tk=touch.keys||{};
+    touch.dx=(tk.right?1:0)-(tk.left?1:0);
+    touch.dy=(tk.down?1:0)-(tk.up?1:0);
+    touch.active=!!(touch.dx||touch.dy);
+  }
+})();
+
+/* ---------- обновление ---------- */
+function collide(p){
+  p.x=clamp(p.x, WALK.x0, WALK.x1);
+  p.y=clamp(p.y, WALK.y0, WALK.y1);
+  for(var i=0;i<STATIONS.length;i++){
+    var st=STATIONS[i];
+    if(st.id==='window') continue;
+    var x0=st.x-8, x1=st.x+st.w+8, y0=st.y-6, y1=st.y+st.h+6;
+    if(p.x>x0&&p.x<x1&&p.y>y0&&p.y<y1){
+      var dl=Math.abs(p.x-x0), dr=Math.abs(x1-p.x), du=Math.abs(p.y-y0), dd=Math.abs(y1-p.y);
+      var m=Math.min(dl,dr,du,dd);
+      if(m===dl) p.x=x0; else if(m===dr) p.x=x1;
+      else if(m===du) p.y=y0; else p.y=y1;
+      p.x=clamp(p.x, WALK.x0, WALK.x1);
+      p.y=clamp(p.y, WALK.y0, WALK.y1);
+    }
+  }
+}
+function updatePlay(dt){
+  var p=G.player;
+  var ax=0, ay=0;
+  if(keys['a']||keys['arrowleft']) ax--;
+  if(keys['d']||keys['arrowright']) ax++;
+  if(keys['w']||keys['arrowup']) ay--;
+  if(keys['s']||keys['arrowdown']) ay++;
+  if(touch.active){ ax+=touch.dx; ay+=touch.dy; }
+  var len=Math.hypot(ax,ay);
+  if(len>0.01){
+    ax/=len; ay/=len;
+    var sp=88*G.mods.walk;
+    p.x+=ax*sp*dt; p.y+=ay*sp*dt;
+    p.anim+=dt*11;
+    p.moving=true;
+    if(Math.abs(ax)>Math.abs(ay)) p.dir = ax<0?'left':'right';
+    else p.dir = ay<0?'up':'down';
+  }else{
+    p.moving=false;
+  }
+  collide(p);
+}
+function update(dt){
+  if(G.toastT>0){
+    G.toastT-=dt;
+    if(G.toastT<=0 && toastEl) toastEl.classList.remove('show');
+  }
+  for(var i=G.floats.length-1;i>=0;i--){
+    var f=G.floats[i]; f.y-=20*dt; f.t-=dt;
+    if(f.t<=0) G.floats.splice(i,1);
+  }
+  G.t+=dt;
+  if(G.state==='play'){ updatePlay(dt); updateQueue(dt); }
+  else if(G.state==='grill'){ updateQueue(dt); updateGrill(dt); }
+  else if(G.state==='cut'){ updateQueue(dt); updateCut(dt); }
+  else if(G.state==='asm'){ updateQueue(dt); }
+}
+function render(){
+  ctx.clearRect(0,0,W,H);
+  if(G.state==='menu'){
+    drawScene();
+    return;
+  }
+  drawScene();
+  updatePrompt();
+  updateHUD();
+}
+
+/* ---------- масштабирование ---------- */
+var DH=52, DB=30;
+var elTop=document.getElementById('topwrap');
+var elStage=document.getElementById('stagewrap');
+var elBot=document.getElementById('botwrap');
+var inTop=document.getElementById('topbar');
+var inScreen=document.getElementById('screen');
+var inBot=document.getElementById('bottombar');
+function fit(){
+  var availW=window.innerWidth-10;
+  var availH=window.innerHeight-10;
+  var s=Math.min(availW/W, availH/(DH+H+DB));
+  s=Math.max(0.5, Math.floor(s*20)/20);
+  var t='scale('+s+')';
+  inTop.style.transform=t; inScreen.style.transform=t; inBot.style.transform=t;
+  elTop.style.width=(W*s)+'px';   elTop.style.height=(DH*s)+'px';
+  elStage.style.width=(W*s)+'px'; elStage.style.height=(H*s)+'px';
+  elBot.style.width=(W*s)+'px';   elBot.style.height=(DB*s)+'px';
+}
+window.addEventListener('resize',fit);
+
+/* ---------- цикл ---------- */
+var last=0;
+function loop(ts){
+  if(!last) last=ts;
+  var dt=(ts-last)/1000; last=ts;
+  if(dt>0.05) dt=0.05;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+fit();
+updateHUD();
+showMenu();
+requestAnimationFrame(loop);
+
+// отладочный доступ — включается только при открытии файла с #debug в адресе
+if(location.hash==='#debug'){
+  window.__B={G:G, interact:interact, asmClick:asmClick, grillTake:grillTake, cutHit:cutHit,
+              startShift:startShift, tryServe:tryServe, newGame:newGame, addCustomer:addCustomer,
+              endMini:endMini, openGrill:openGrill, openCut:openCut, openAsm:openAsm,
+              tick:function(dt){ update(dt); },
+              setOrder:function(o){ if(G.queue.length){ G.queue[0].order=o.slice(); G.frontKey=0; } }};
+}
+
+})();
+</script>
+</body>
+</html>
