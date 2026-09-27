@@ -74,11 +74,29 @@
 
   /* патроны */
   .ammo{ text-align:right; background:rgba(8,14,12,.55); border:1px solid rgba(255,201,60,.25);
-         border-radius:12px; padding:10px 18px; min-width:150px; backdrop-filter:blur(6px); }
+         border-radius:12px; padding:10px 18px; min-width:170px; backdrop-filter:blur(6px); }
+  .ammo .label{ font-size:10px; letter-spacing:2.5px; text-transform:uppercase; color:#7f9b86;
+                transition:color .2s; }
   .ammo .num{ font-size:34px; font-weight:800; font-variant-numeric:tabular-nums;
               color:var(--gold); text-shadow:0 0 18px rgba(255,201,60,.65); line-height:1; }
   .ammo .num.empty{ color:var(--red); text-shadow:0 0 18px rgba(255,46,77,.8); }
   .ammo .rsv{ font-size:15px; color:#7f9b86; font-weight:600; }
+
+  /* -------- панель найденного оружия -------- */
+  #weaponList{ display:flex; gap:7px; flex-wrap:wrap; justify-content:center;
+               margin-top:10px; pointer-events:none; }
+  .wslot{ display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700;
+          letter-spacing:1px; color:#9fb0a6; background:rgba(8,14,12,.5);
+          border:1px solid rgba(255,255,255,.10); border-radius:9px; padding:5px 10px;
+          backdrop-filter:blur(5px); transition:all .15s; }
+  .wslot b{ display:inline-flex; align-items:center; justify-content:center;
+            width:16px; height:16px; border-radius:4px; background:rgba(255,255,255,.12);
+            font-size:10px; color:#cfe3d8; }
+  .wslot i{ font-style:normal; font-size:10px; color:#6f8a7c; font-weight:600; }
+  .wslot.act{ color:#0b140f; background:linear-gradient(180deg,#fff2b0,#ffc93c);
+              border-color:#ffc93c; box-shadow:0 0 16px rgba(255,201,60,.45); }
+  .wslot.act b{ background:rgba(0,0,0,.25); color:#3a2a00; }
+  .wslot.act i{ color:#5a4400; }
 
   /* баннер волны */
   #waveBanner{
@@ -270,10 +288,11 @@
       <div class="bar"><div id="healthFill"></div></div>
     </div>
     <div class="ammo">
-      <div class="label">Патроны</div>
-      <div class="num" id="uiAmmo">30<span class="rsv"> / 240</span></div>
+      <div class="label" id="uiWeapon">Пистолет</div>
+      <div class="num" id="uiAmmo">12<span class="rsv"> / 120</span></div>
     </div>
   </div>
+  <div id="weaponList"></div>
 </div>
 
 <div id="crosshair">
@@ -297,11 +316,15 @@
     <div class="rules">
       <div><span class="k">WASD</span> движение</div>
       <div><span class="k">Мышь</span> обзор</div>
-      <div><span class="k">ЛКМ</span> огонь (автоматический)</div>
+      <div><span class="k">ЛКМ</span> огонь</div>
       <div><span class="k">R</span> перезарядка</div>
+      <div><span class="k">1…6</span> смена оружия</div>
+      <div><span class="k">Q</span> следующее оружие</div>
       <div><span class="k">Shift</span> бег</div>
       <div><span class="k">Esc</span> пауза</div>
-      <div style="margin-top:6px;color:#8fa596;">Убивайте монстров, не дайте себя загрызть.<br>Попадание <b>в голову</b> бьёт в 2.5 раза сильнее.</div>
+      <div style="margin-top:6px;color:#8fa596;">Из монстров выпадают <b style="color:#ffc93c">патроны</b>
+      и <b style="color:#5cd8ff">новое оружие</b> — подбирай их, просто подойдя.<br>
+      Попадание <b>в голову</b> бьёт в 2.5 раза сильнее.</div>
     </div>
     <button id="btnStart">Играть</button>
     <div class="hint">НАЖМИТЕ, ЧТОБЫ ЗАХВАТИТЬ МЫШЬ</div>
@@ -363,8 +386,63 @@ const CONFIG = {
   waveBreak:      3.5,
   maxAlive:       14,
   medkitHeal:     25,
-  medkitChance:   0.14
+  medkitChance:   0.14,
+  ammoChance:     0.42,   // шанс, что монстр выронит патроны
+  weaponChance:   0.13,   // шанс, что монстр выронит оружие
+  ammoPickup:     0.30    // доля магазина в одной пачке патронов
 };
+
+/* ---------------- ОРУЖИЕ ----------------
+   Каждый ствол можно найти в бою: оно выпадает из монстров.
+   mag — магазин, reserveMax — сколько патронов в запасе максимум. */
+const WEAPONS = {
+  pistol: {
+    id:'pistol', name:'Пистолет', short:'ПИСТОЛЕТ', order:1,
+    dmg:26, rate:0.17, mag:12, reserveMax:120, auto:false,
+    pellets:1, spread:0.0035, kick:0.05, shake:0.13,
+    reloadTime:1.15, muzzle:0.14, color:0x39ff14, tracer:0x9fffb0,
+    desc:'Надёжный и точный. С него начинаешь.'
+  },
+  smg: {
+    id:'smg', name:'Пистолет-пулемёт', short:'ПП', order:2,
+    dmg:17, rate:0.065, mag:35, reserveMax:280, auto:true,
+    pellets:1, spread:0.013, kick:0.035, shake:0.09,
+    reloadTime:1.35, muzzle:0.15, color:0x5cd8ff, tracer:0xb0e8ff,
+    desc:'Шквал огня. Сильно косит в стороны.'
+  },
+  shotgun: {
+    id:'shotgun', name:'Дробовик', short:'ДРОБОВИК', order:3,
+    dmg:13, rate:0.72, mag:8, reserveMax:64, auto:false,
+    pellets:9, spread:0.055, kick:0.14, shake:0.34,
+    reloadTime:1.9, muzzle:0.24, color:0xffb03a, tracer:0xffd79a,
+    desc:'Девять дробинок. В упор сносит всё.'
+  },
+  rifle: {
+    id:'rifle', name:'Винтовка', short:'ВИНТОВКА', order:4,
+    dmg:78, rate:0.85, mag:6, reserveMax:42, auto:false,
+    pellets:1, spread:0.0012, kick:0.16, shake:0.4,
+    reloadTime:1.8, muzzle:0.22, color:0xff5cf0, tracer:0xffb0f8,
+    headMult:3.4, pierce:3,
+    desc:'Бьёт насквозь нескольких. Попадание в голову — тройной урон.'
+  },
+  plasma: {
+    id:'plasma', name:'Плазмер', short:'ПЛАЗМЕР', order:5,
+    dmg:46, rate:0.30, mag:20, reserveMax:140, auto:true,
+    pellets:1, spread:0.006, kick:0.08, shake:0.18,
+    reloadTime:1.5, muzzle:0.20, color:0xb45cff, tracer:0xd8a6ff,
+    splash:2.6, splashDmg:0.55,
+    desc:'Взрывается при попадании и задевает всех рядом.'
+  },
+  minigun: {
+    id:'minigun', name:'Миниган', short:'МИНИГАН', order:6,
+    dmg:15, rate:0.045, mag:150, reserveMax:600, auto:true,
+    pellets:1, spread:0.030, kick:0.02, shake:0.07,
+    reloadTime:2.6, muzzle:0.18, color:0xffc93c, tracer:0xfff0b0,
+    desc:'Море свинца. Долго перезаряжается.'
+  }
+};
+const WEAPON_LIST = Object.keys(WEAPONS).sort((a,b) => WEAPONS[a].order - WEAPONS[b].order);
+const START_WEAPON = 'pistol';
 
 /* ---------------- Типы монстров ---------------- */
 const TYPES = {
@@ -389,17 +467,57 @@ const state = {
   shots: 0,
   hits: 0,
   hp: CONFIG.maxHp,
-  ammo: CONFIG.startAmmo,
-  reserve: CONFIG.reserveAmmo,
   reloading: 0,
   fireCooldown: 0,
   queue: [],
   spawnTimer: 0,
   waveActive: false,
   waveBreak: 0,
+  /* --- оружие --- */
+  weapon: START_WEAPON,          // что в руках
+  owned: {},                     // id -> { reserve } для каждого найденного ствола
   bestWave:  Number(localStorage.getItem(BEST_WAVE)  || 0),
   bestScore: Number(localStorage.getItem(BEST_SCORE) || 0)
 };
+
+/* --- работа с оружием --- */
+function wdef(){ return WEAPONS[state.weapon] || WEAPONS[START_WEAPON]; }
+function hasWeapon(id){ return !!state.owned[id]; }
+function ownedList(){
+  return WEAPON_LIST.filter(id => hasWeapon(id));
+}
+/* магазин — СВОЙ у каждого ствола */
+function getAmmo(id){ return state.owned[id] ? state.owned[id].ammo : 0; }
+function setAmmo(id, v){ if (state.owned[id]) state.owned[id].ammo = Math.max(0, Math.min(WEAPONS[id].mag, v)); }
+function currentAmmo(){ return getAmmo(state.weapon); }
+function giveWeapon(id, reserve){
+  const def = WEAPONS[id]; if (!def) return false;
+  const isNew = !state.owned[id];
+  const cap = def.reserveMax;
+  if (isNew){
+    state.owned[id] = {
+      reserve: Math.min(cap, reserve === undefined ? Math.floor(cap*0.5) : reserve),
+      ammo: def.mag                       // новый ствол приходит заряженным
+    };
+  } else {
+    state.owned[id].reserve = Math.min(cap, state.owned[id].reserve + (reserve || Math.floor(cap*0.2)));
+  }
+  return isNew;
+}
+function selectWeapon(id, silent){
+  if (!hasWeapon(id) || state.weapon === id) return false;
+  state.weapon = id;
+  state.reloading = 0;
+  state.fireCooldown = 0.18;
+  ui.reloadHint.classList.remove('on');
+  crosshair.classList.remove('reloading');
+  buildWeaponMesh();             // внешний вид под новый ствол
+  if (!silent){ SFX.swap(); banner(def_name(id), def_desc(id)); }
+  updateHUD();
+  return true;
+}
+function def_name(id){ return (WEAPONS[id]||{}).name || id; }
+function def_desc(id){ return (WEAPONS[id]||{}).desc || ''; }
 
 const input = { fwd:0, side:0, sprint:false, firing:false };
 let yaw = 0, pitch = 0;
@@ -551,11 +669,32 @@ function buildArena(){
 
 /* -------- Оружие в руках -------- */
 let weapon, muzzleFlash, muzzleLight;
-function buildWeapon(){
-  weapon = new THREE.Group();
-  const dark  = new THREE.MeshStandardMaterial({ color:0x1b2026, roughness:0.45, metalness:0.75 });
-  const darker= new THREE.MeshStandardMaterial({ color:0x0e1114, roughness:0.6,  metalness:0.5 });
-  const glow  = new THREE.MeshStandardMaterial({ color:0x0a0f12, emissive:0x39ff14, emissiveIntensity:2.2 });
+let weaponMats = null;
+
+/* универсальные материалы */
+function initWeaponMats(){
+  weaponMats = {
+    dark:   new THREE.MeshStandardMaterial({ color:0x1b2026, roughness:0.45, metalness:0.75 }),
+    darker: new THREE.MeshStandardMaterial({ color:0x0e1114, roughness:0.6,  metalness:0.5 }),
+    metal:  new THREE.MeshStandardMaterial({ color:0x39424c, roughness:0.35, metalness:0.85 }),
+    wood:   new THREE.MeshStandardMaterial({ color:0x6b4a2a, roughness:0.7,  metalness:0.1 })
+  };
+}
+function glowMat(hex){ return new THREE.MeshStandardMaterial({ color:0x0a0f12, emissive:hex, emissiveIntensity:2.0 }); }
+
+/* строит модель под ТЕКУЩИЙ ствол (вызывается при смене оружия) */
+function buildWeaponMesh(){
+  if (!weaponMats) initWeaponMats();
+  // очистить старую модель
+  for (let i = weapon.children.length - 1; i >= 0; i--){
+    const ch = weapon.children[i];
+    if (ch === muzzleFlash || ch === muzzleLight || (muzzleFlash && ch === muzzleFlash.userData.flare)) continue;
+    weapon.remove(ch);
+  }
+  const def = wdef();
+  const dark = weaponMats.dark, darker = weaponMats.darker,
+        metal = weaponMats.metal, wood = weaponMats.wood;
+  const glow = glowMat(def.color);
 
   const add = (geo, mat, x, y, z, rx, ry, rz) => {
     const m = new THREE.Mesh(geo, mat);
@@ -565,19 +704,57 @@ function buildWeapon(){
     return m;
   };
 
-  add(new THREE.BoxGeometry(0.13, 0.15, 0.62), dark,   0, 0,     -0.05);          // ствольная коробка
-  add(new THREE.CylinderGeometry(0.03, 0.03, 0.62, 10), darker, 0, 0.012, -0.62, Math.PI/2); // ствол
-  add(new THREE.CylinderGeometry(0.05, 0.05, 0.13, 8),  dark,   0, 0.012, -0.94, Math.PI/2); // дульный тормоз
-  add(new THREE.BoxGeometry(0.07, 0.07, 0.30), darker, 0, 0.13,  -0.20);          // прицел
-  add(new THREE.BoxGeometry(0.045, 0.045, 0.045), glow, 0, 0.17, -0.33);          // глазок прицела
-  add(new THREE.BoxGeometry(0.10, 0.26, 0.13), dark,   0, -0.18, -0.14, -0.12);   // магазин
-  add(new THREE.BoxGeometry(0.09, 0.20, 0.10), darker, 0, -0.15,  0.10,  0.25);   // рукоять
-  add(new THREE.BoxGeometry(0.11, 0.13, 0.26), dark,   0, -0.01,  0.26);          // приклад
-  add(new THREE.BoxGeometry(0.05, 0.05, 0.34), glow,   0, -0.05, -0.30);          // неоновая накладка
+  if (def.id === 'pistol'){
+    add(new THREE.BoxGeometry(0.11, 0.13, 0.42), dark,  0, 0, -0.04);
+    add(new THREE.CylinderGeometry(0.026, 0.026, 0.30, 10), darker, 0, 0.012, -0.34, Math.PI/2);
+    add(new THREE.BoxGeometry(0.07, 0.20, 0.10), darker, 0, -0.15, 0.06, 0.22);
+    add(new THREE.BoxGeometry(0.045, 0.045, 0.10), glow, 0, 0.10, -0.12);
+  }
+  else if (def.id === 'smg'){
+    add(new THREE.BoxGeometry(0.12, 0.14, 0.52), dark,  0, 0, -0.06);
+    add(new THREE.CylinderGeometry(0.028, 0.028, 0.44, 10), darker, 0, 0.012, -0.52, Math.PI/2);
+    add(new THREE.CylinderGeometry(0.20, 0.20, 0.10, 12), dark, 0, -0.19, -0.10, Math.PI/2); // круглый магазин
+    add(new THREE.BoxGeometry(0.08, 0.18, 0.09), darker, 0, -0.15, 0.10, 0.25);
+    add(new THREE.BoxGeometry(0.05, 0.05, 0.30), glow, 0, 0.10, -0.28);
+  }
+  else if (def.id === 'shotgun'){
+    add(new THREE.BoxGeometry(0.14, 0.16, 0.60), wood, 0, 0, -0.02);
+    add(new THREE.CylinderGeometry(0.055, 0.055, 0.92, 12), metal, 0, 0.03, -0.60, Math.PI/2);  // ствол
+    add(new THREE.CylinderGeometry(0.045, 0.045, 0.72, 10), darker, 0, -0.06, -0.52, Math.PI/2); // подствольный
+    add(new THREE.BoxGeometry(0.13, 0.15, 0.24), wood, 0, -0.03, 0.30);   // приклад
+    add(new THREE.BoxGeometry(0.06, 0.06, 0.22), glow, 0, 0.11, -0.30);
+  }
+  else if (def.id === 'rifle'){
+    add(new THREE.BoxGeometry(0.13, 0.15, 0.62), dark, 0, 0, -0.05);
+    add(new THREE.CylinderGeometry(0.030, 0.030, 1.05, 10), metal, 0, 0.012, -0.80, Math.PI/2);
+    add(new THREE.BoxGeometry(0.09, 0.09, 0.40), darker, 0, 0.14, -0.30);  // оптика
+    add(new THREE.CylinderGeometry(0.055, 0.055, 0.16, 10), darker, 0, 0.20, -0.36, Math.PI/2);
+    add(new THREE.BoxGeometry(0.045, 0.045, 0.05), glow, 0, 0.20, -0.44);
+    add(new THREE.BoxGeometry(0.10, 0.24, 0.12), dark, 0, -0.17, -0.12, -0.1);
+    add(new THREE.BoxGeometry(0.12, 0.14, 0.30), wood, 0, -0.02, 0.30);
+  }
+  else if (def.id === 'plasma'){
+    add(new THREE.BoxGeometry(0.16, 0.18, 0.56), dark, 0, 0, -0.06);
+    add(new THREE.CylinderGeometry(0.075, 0.095, 0.40, 12), glow, 0, 0.02, -0.52, Math.PI/2); // светящийся ствол
+    add(new THREE.TorusGeometry(0.13, 0.028, 8, 16), glow, 0, 0.02, -0.32);
+    add(new THREE.CylinderGeometry(0.09, 0.09, 0.26, 12), darker, 0, -0.20, -0.06);  // батарея
+    add(new THREE.BoxGeometry(0.09, 0.20, 0.10), darker, 0, -0.15, 0.14, 0.25);
+  }
+  else { /* minigun */
+    add(new THREE.BoxGeometry(0.20, 0.20, 0.50), dark, 0, 0, -0.02);
+    for (let i = 0; i < 6; i++){
+      const a = i / 6 * Math.PI * 2;
+      add(new THREE.CylinderGeometry(0.026, 0.026, 0.86, 8), darker,
+          Math.cos(a)*0.075, 0.03 + Math.sin(a)*0.075, -0.62, Math.PI/2);
+    }
+    add(new THREE.CylinderGeometry(0.15, 0.15, 0.14, 14), metal, 0, 0.03, -1.02, Math.PI/2); // кожух
+    add(new THREE.CylinderGeometry(0.17, 0.17, 0.22, 14), darker, 0, -0.20, 0.08, Math.PI/2); // барабан
+    add(new THREE.BoxGeometry(0.06, 0.06, 0.34), glow, 0, 0.13, -0.24);
+  }
+}
 
-  weapon.position.set(0.30, -0.26, -0.55);
-  weapon.rotation.set(0.02, 0.06, 0);
-  camera.add(weapon);
+function buildWeapon(){
+  weapon = new THREE.Group();
 
   // вспышка выстрела
   muzzleFlash = new THREE.Mesh(
@@ -603,6 +780,12 @@ function buildWeapon(){
   muzzleLight = new THREE.PointLight(0xffd27a, 0, 14, 2);
   muzzleLight.position.set(0, 0.012, -1.1);
   weapon.add(muzzleLight);
+
+  buildWeaponMesh();
+
+  weapon.position.set(0.30, -0.26, -0.55);
+  weapon.rotation.set(0.02, 0.06, 0);
+  camera.add(weapon);
 }
 
 /* =========================================================================
@@ -794,9 +977,10 @@ function makeTracer(){
   return { mesh, life:0, age:0 };
 }
 
-function tracer(from, to){
+function tracer(from, to, colorHex){
   let t = tracerPool.pop();
   if (!t) t = makeTracer();
+  if (colorHex !== undefined && t.mesh.material.color) t.mesh.material.color.setHex(colorHex);
   const dir = new THREE.Vector3().subVectors(to, from);
   const len = dir.length();
   t.mesh.position.copy(from);
@@ -834,8 +1018,57 @@ function addDecal(point, normal){
 const activeDecals = [];
 
 /* =========================================================================
-   ЛЕЧЕНИЕ (аптечки)
+   ВЫПАДЕНИЕ ПРЕДМЕТОВ (аптечки, патроны, оружие)
    ========================================================================= */
+/* ящик патронов: зелёный, с числом патронов */
+function dropAmmo(pos, amount){
+  const g = new THREE.Group();
+  const boxMat = new THREE.MeshStandardMaterial({ color:0x2a2a12, emissive:0xffc93c,
+                    emissiveIntensity:0.75, roughness:0.55, metalness:0.3 });
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.30, 0.26), boxMat);
+  g.add(box);
+  // «лента» патронов сверху
+  const clipMat = new THREE.MeshBasicMaterial({ color:0xfff0b0 });
+  for (let i = 0; i < 3; i++){
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.20, 7), clipMat);
+    c.position.set(-0.11 + i*0.11, 0.19, 0);
+    g.add(c);
+  }
+  const light = new THREE.PointLight(0xffc93c, 1.5, 6, 2);
+  g.add(light);
+  g.position.copy(pos); g.position.y = 0.65;
+  scene.add(g);
+  pickups.push({ group:g, t:0, life:26, kind:'ammo', amount:amount||0, spin:3.2 });
+}
+
+/* ящик с новым оружием: светится цветом ствола */
+function dropWeapon(pos, id){
+  const def = WEAPONS[id]; if (!def) return;
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color:0x14181f, emissive:def.color,
+                    emissiveIntensity:0.9, roughness:0.45, metalness:0.6 });
+  // силуэт ствола
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.16, 0.16), bodyMat);
+  g.add(body);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.42, 10), bodyMat);
+  barrel.rotation.z = Math.PI/2; barrel.position.x = 0.48;
+  g.add(barrel);
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 0.13), bodyMat);
+  grip.position.set(-0.14, -0.19, 0); grip.rotation.z = 0.22;
+  g.add(grip);
+  // ореол вокруг
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.035, 8, 22),
+    new THREE.MeshBasicMaterial({ color:def.color, transparent:true, opacity:0.65,
+                                  blending:THREE.AdditiveBlending, depthWrite:false }));
+  halo.rotation.x = Math.PI/2;
+  g.add(halo);
+  const light = new THREE.PointLight(def.color, 2.4, 9, 2);
+  g.add(light);
+  g.position.copy(pos); g.position.y = 0.8;
+  scene.add(g);
+  pickups.push({ group:g, t:0, life:32, kind:'weapon', weaponId:id, spin:2.2, halo });
+}
+
 function dropMedkit(pos){
   const g = new THREE.Group();
   const boxMat = new THREE.MeshStandardMaterial({ color:0x0f2a17, emissive:0x39ff14, emissiveIntensity:0.8, roughness:0.5 });
@@ -891,7 +1124,16 @@ function noise(dur, vol, freq, type){
   src.start(t);
 }
 const SFX = {
-  shot(){ noise(0.09, 0.30, 2600); tone(150, 0.08, 'square', 0.13, 55); },
+  /* выстрел зависит от оружия */
+  shot(def){
+    const id = def ? def.id : 'pistol';
+    if (id === 'shotgun'){ noise(0.20, 0.42, 1400); tone(90, 0.16, 'square', 0.20, 40); }
+    else if (id === 'rifle'){ noise(0.14, 0.36, 3200); tone(210, 0.12, 'square', 0.17, 60); }
+    else if (id === 'plasma'){ tone(620, 0.16, 'sawtooth', 0.16, 180); noise(0.10, 0.16, 1800); }
+    else if (id === 'minigun'){ noise(0.05, 0.22, 2800); tone(190, 0.05, 'square', 0.10, 60); }
+    else if (id === 'smg'){ noise(0.06, 0.24, 3000); tone(170, 0.06, 'square', 0.11, 55); }
+    else { noise(0.09, 0.30, 2600); tone(150, 0.08, 'square', 0.13, 55); }
+  },
   hit(){ tone(1100, 0.05, 'square', 0.16, 1500); },
   headshot(){ tone(1700, 0.06, 'square', 0.2, 2400); setTimeout(()=>tone(2400,0.09,'sine',0.16),55); },
   kill(){ [300,240,180].forEach((f,i)=>setTimeout(()=>tone(f,0.22,'sawtooth',0.16,f*0.6), i*80)); },
@@ -902,6 +1144,10 @@ const SFX = {
   wave(){ [520,660,880].forEach((f,i)=>setTimeout(()=>tone(f,0.22,'triangle',0.15), i*130)); },
   clear(){ [660,880,1180,1480].forEach((f,i)=>setTimeout(()=>tone(f,0.2,'sine',0.14), i*110)); },
   pickup(){ [900,1300].forEach((f,i)=>setTimeout(()=>tone(f,0.12,'sine',0.16), i*90)); },
+  /* подбор НОВОГО оружия — торжественнее */
+  weapon(){ [520,780,1040,1560].forEach((f,i)=>setTimeout(()=>tone(f,0.20,'triangle',0.17), i*95)); },
+  /* смена оружия в руках */
+  swap(){ tone(300, 0.05, 'square', 0.13); setTimeout(()=>tone(520,0.07,'square',0.13), 70); },
   over(){ [520,400,300,200].forEach((f,i)=>setTimeout(()=>tone(f,0.4,'triangle',0.16,f*0.6), i*220)); }
 };
 
@@ -911,80 +1157,141 @@ const SFX = {
 const ray = new THREE.Raycaster();
 const centerNDC = new THREE.Vector2(0, 0);
 
+/* патроны: у КАЖДОГО ствола свой запас */
+function giveAmmoTo(id, amount){
+  const def = WEAPONS[id]; if (!def || !state.owned[id]) return;
+  state.owned[id].reserve = Math.min(def.reserveMax, state.owned[id].reserve + amount);
+}
+function currentReserve(){ return state.owned[state.weapon] ? state.owned[state.weapon].reserve : 0; }
+function setReserve(v){ if (state.owned[state.weapon]) state.owned[state.weapon].reserve = v; }
+function def_short(id){ return (WEAPONS[id]||{}).short || id; }
+
+/* один «выстрел» дробинки/пули по лучу */
+function traceShot(spreadX, spreadY, dmgMul){
+  const ndc = new THREE.Vector2(spreadX, spreadY);
+  ray.setFromCamera(ndc, camera);
+  ray.far = CONFIG.bulletRange;
+
+  const liveGroups = monsters.filter(m => !m.dead).map(m => m.group);
+  const monHits = liveGroups.length ? ray.intersectObjects(liveGroups, true) : [];
+  const worldHits = ray.intersectObjects(worldMeshes, false);
+  const worldDist = worldHits.length ? worldHits[0].distance : Infinity;
+
+  // все попадания по монстрам, отсортированные по дальности
+  const hits = [];
+  for (const h of monHits){
+    const mon = findMonster(h.object);
+    if (!mon || mon.dead) continue;
+    // не засчитываем одно и то же тело дважды на одну дробинку
+    if (h.distance > worldDist) break;
+    if (hits.some(x => x.mon === mon)) continue;
+    hits.push({ mon, point:h.point, dist:h.distance, head:!!findPart(h.object,'head') });
+  }
+  if (!hits.length){
+    // промах — отметина на поверхности
+    const h = worldHits[0];
+    if (h){
+      const n = h.face
+        ? new THREE.Vector3().copy(h.face.normal)
+            .applyMatrix3(new THREE.Matrix3().getNormalMatrix(h.object.matrixWorld)).normalize()
+        : new THREE.Vector3(0,1,0);
+      addDecal(h.point, n);
+      burst(h.point, 0x9fb0a6, 5, 1.8);
+    }
+    return null;
+  }
+  return { hits, worldDist };
+}
+
 function fire(){
   if (state.mode !== 'playing') return;
   if (state.reloading > 0 || state.fireCooldown > 0) return;
-  if (state.ammo <= 0){
-    if (state.reserve > 0) startReload();
+  const def = wdef();
+
+  if (currentAmmo() <= 0){
+    if (currentReserve() > 0) startReload();
     else SFX.empty();
     return;
   }
 
-  state.ammo--;
+  setAmmo(state.weapon, currentAmmo() - 1);
   state.shots++;
-  state.fireCooldown = CONFIG.fireRate;
-  SFX.shot();
+  state.fireCooldown = def.rate;
+  SFX.shot(def);
 
   // отдача
-  recoilKick = Math.min(0.09, recoilKick + 0.05);
-  shakeAmt = Math.min(0.32, shakeAmt + 0.13);
+  recoilKick = Math.min(0.16, recoilKick + def.kick);
+  shakeAmt = Math.min(0.5, shakeAmt + def.shake);
 
   // дульная вспышка
   muzzleFlash.visible = true;
   muzzleFlash.userData.flare.visible = true;
   muzzleFlash.material.opacity = 0.95;
-  muzzleFlash.scale.setScalar(rand(0.85, 1.35));
-  muzzleLight.intensity = 3.2;
+  muzzleFlash.material.color.setHex(def.tracer);
+  muzzleFlash.userData.flare.material.color.setHex(def.color);
+  muzzleLight.color.setHex(def.color);
+  muzzleFlash.scale.setScalar(rand(0.85, 1.35) * (def.muzzle/0.14));
+  muzzleLight.intensity = 3.0;
 
-  // луч
   camera.updateMatrixWorld();
-  ray.setFromCamera(centerNDC, camera);
-  ray.far = CONFIG.bulletRange;
-
   const muzzleWorld = new THREE.Vector3();
   muzzleFlash.getWorldPosition(muzzleWorld);
 
-  // 1) монстры
-  const liveGroups = monsters.filter(m => !m.dead).map(m => m.group);
-  const monHits = liveGroups.length ? ray.intersectObjects(liveGroups, true) : [];
-  const monHit = monHits.find(h => findMonster(h.object));
+  const pellets = def.pellets || 1;
+  const pierced = {};                       // кого уже пробили (для pierce)
+  let anyHit = false, anyHead = false;
 
-  // 2) стены, пол и колонны
-  const worldHits = ray.intersectObjects(worldMeshes, false);
+  for (let i = 0; i < pellets; i++){
+    const sx = (pellets > 1 ? rand(-def.spread, def.spread) : rand(-def.spread, def.spread));
+    const sy = (pellets > 1 ? rand(-def.spread, def.spread) : rand(-def.spread, def.spread));
+    const res = traceShot(sx, sy, 1);
+    if (!res) continue;
 
-  let point, normal = new THREE.Vector3(0, 1, 0), monster = null, headshot = false;
-  const monDist   = monHit ? monHit.distance : Infinity;
-  const worldDist = worldHits.length ? worldHits[0].distance : Infinity;
-
-  if (monHit && monDist <= worldDist){
-    monster = findMonster(monHit.object);
-    point = monHit.point;
-    headshot = !!findPart(monHit.object, 'head');
-  } else if (worldHits.length){
-    const h = worldHits[0];
-    point = h.point;
-    if (h.face){
-      normal.copy(h.face.normal)
-        .applyMatrix3(new THREE.Matrix3().getNormalMatrix(h.object.matrixWorld))
-        .normalize();
+    const maxP = def.pierce || 1;
+    let n = 0;
+    for (const h of res.hits){
+      if (pierced[h.mon]) continue;
+      if (n >= maxP) break;
+      pierced[h.mon] = 1; n++;
+      anyHit = true;
+      if (h.head) anyHead = true;
+      damageMonster(h.mon, h.point, h.head, def);
+      if (def.splash){
+        splashDamage(h.point, def);
+        burst(h.point, def.color, 26, 5.0);
+      }
+      if (!def.pierce) break;               // обычная пуля останавливается
     }
-  } else {
-    point = ray.ray.at(CONFIG.bulletRange, new THREE.Vector3());
+    // трассер к первой цели (или в стену)
+    const endPoint = res.hits.length ? res.hits[0].point
+                    : ray.ray.at(CONFIG.bulletRange, new THREE.Vector3());
+    tracer(muzzleWorld, endPoint, def.tracer);
   }
 
-  tracer(muzzleWorld, point);
-
-  if (monster && !monster.dead){
-    damageMonster(monster, point, headshot);
-  } else {
-    // промах: отметина на поверхности и искры
-    addDecal(point, normal);
-    burst(point, 0x9fb0a6, 7, 2.2);
-  }
-
+  if (!anyHit) state.hits += 0;             // промах
   updateHUD();
 
-  if (state.ammo === 0 && state.reserve > 0) startReload();
+  if (currentAmmo() === 0 && currentReserve() > 0) startReload();
+}
+
+/* взрыв плазмы: урон всем в радиусе */
+function splashDamage(point, def){
+  const R = def.splash;
+  for (const m of monsters){
+    if (m.dead) continue;
+    const d = m.group.position.distanceTo(point);
+    if (d < R){
+      const k = 1 - d / R;                  // ближе — сильнее
+      const dmg = Math.round(def.dmg * def.splashDmg * k);
+      if (dmg > 0){
+        m.hp -= dmg;
+        m.hitFlash = 1;
+        m.bar.visible = true;
+        state.hits++;
+        if (m.hp <= 0) killMonster(m, false);
+      }
+    }
+  }
 }
 
 function findMonster(obj){
@@ -1004,9 +1311,10 @@ function findPart(obj, part){
   return null;
 }
 
-function damageMonster(m, point, headshot){
-  const dmgBase = 26;
-  const dmg = Math.round(dmgBase * (headshot ? CONFIG.headshotMult : 1) * rand(0.9, 1.1));
+function damageMonster(m, point, headshot, def){
+  def = def || wdef();
+  const headMul = def.headMult || CONFIG.headshotMult;
+  const dmg = Math.round(def.dmg * (headshot ? headMul : 1) * rand(0.9, 1.1));
 
   m.hp -= dmg;
   m.hitFlash = 1;
@@ -1017,7 +1325,7 @@ function damageMonster(m, point, headshot){
 
   // отбрасывание
   const away = new THREE.Vector3().subVectors(m.group.position, camera.position).setY(0).normalize();
-  m.knock.addScaledVector(away, headshot ? 1.5 : 0.8);
+  m.knock.addScaledVector(away, (headshot ? 1.5 : 0.8) * (def.kick/0.05) * 0.5);
 
   if (headshot){
     state.headshots++;
@@ -1052,10 +1360,40 @@ function killMonster(m, headshot){
   burst(m.group.position.clone().setY(0.8), m.cfg.glow, 40, 5.5);
   burst(m.group.position.clone().setY(1.1), 0xffffff, 14, 3.4);
 
-  if (Math.random() < CONFIG.medkitChance){
-    dropMedkit(m.group.position.clone());
-  }
+  // лут: аптечка / патроны / новое оружие
+  dropLoot(m);
+
   updateHUD();
+}
+
+/* что выпадет из монстра */
+function dropLoot(m){
+  const pos = m.group.position.clone();
+
+  // 1) оружие — редко и никогда не выпадает то, что уже есть
+  const missing = WEAPON_LIST.filter(id => !hasWeapon(id));
+  // бруты (крупные) дают оружие чаще
+  const dropWeaponChance = CONFIG.weaponChance * (m.cfg.scale >= 1.5 ? 2.2 : 1);
+  if (missing.length && Math.random() < dropWeaponChance){
+    // даём ствол чуть выше по «порядку», чем текущий — чтобы был прогресс
+    const cur = WEAPONS[state.weapon].order;
+    const preferred = missing.filter(id => WEAPONS[id].order > cur);
+    const bag = preferred.length ? preferred : missing;
+    dropWeapon(pos, bag[Math.floor(Math.random()*bag.length)]);
+    return;                                  // оружие вместо патронов
+  }
+
+  // 2) патроны
+  if (Math.random() < CONFIG.ammoChance){
+    const def = wdef();
+    const amount = Math.max(6, Math.round(def.mag * CONFIG.ammoPickup * (m.cfg.scale >= 1.5 ? 1.8 : 1)));
+    dropAmmo(pos, amount);
+  }
+
+  // 3) аптечка
+  if (Math.random() < CONFIG.medkitChance){
+    dropMedkit(pos.clone());
+  }
 }
 
 /* =========================================================================
@@ -1071,8 +1409,28 @@ function onKey(e, down){
     case 'KeyD': case 'ArrowRight': input.side = down ? 1 : 0; break;
     case 'ShiftLeft': case 'ShiftRight': input.sprint = down; break;
     case 'KeyR': if (down) startReload(); break;
+    case 'KeyQ': if (down) cycleWeapon(-1); break;
     case 'Escape': if (down && state.mode === 'playing') pause(); break;
+    case 'Digit1': case 'Digit2': case 'Digit3':
+    case 'Digit4': case 'Digit5': case 'Digit6':
+      if (down) selectBySlot(Number(e.code.slice(5)));
+      break;
   }
+}
+
+/* выбрать оружие по номеру слота (1..6) */
+function selectBySlot(n){
+  const owned = ownedList();
+  if (n >= 1 && n <= owned.length) selectWeapon(owned[n-1]);
+  else SFX.empty();
+}
+/* перебор найденного оружия */
+function cycleWeapon(dir){
+  const owned = ownedList();
+  if (owned.length < 2) return;
+  let i = owned.indexOf(state.weapon);
+  i = (i + dir + owned.length) % owned.length;
+  selectWeapon(owned[i]);
 }
 window.addEventListener('keydown', e => onKey(e, true));
 window.addEventListener('keyup',   e => onKey(e, false));
@@ -1144,14 +1502,14 @@ function loop(){
 }
 
 function update(dt){
-  /* --- стрельба автоматическая при удержании --- */
+  /* --- стрельба: автоматическая только для авто-оружия --- */
   if (state.fireCooldown > 0) state.fireCooldown -= dt;
-  if (input.firing) fire();
+  if (input.firing && wdef().auto) fire();
 
   /* --- перезарядка --- */
   if (state.reloading > 0){
     state.reloading -= dt;
-    const p = 1 - state.reloading / CONFIG.reloadTime;
+    const p = 1 - state.reloading / wdef().reloadTime;
     document.getElementById('reloadFill').style.width = clamp(p * 100, 0, 100) + '%';
     if (state.reloading <= 0) finishReload();
   }
@@ -1182,18 +1540,39 @@ function update(dt){
   /* --- волны --- */
   updateWaves(dt);
 
-  /* --- аптечки --- */
+  /* --- предметы: аптечки, патроны, оружие --- */
   for (let i = pickups.length - 1; i >= 0; i--){
     const p = pickups[i];
     p.t += dt;
     p.life -= dt;
-    p.group.rotation.y += dt * 1.8;
-    p.group.position.y = 0.75 + Math.sin(p.t * 3) * 0.12;
+    p.group.rotation.y += dt * (p.spin || 1.8);
+    p.group.position.y = (p.kind === 'weapon' ? 0.8 : 0.7) + Math.sin(p.t * 3) * 0.12;
+    if (p.halo){
+      const k = 0.55 + Math.sin(p.t * 4) * 0.25;
+      p.halo.material.opacity = k;
+      p.halo.scale.setScalar(1 + Math.sin(p.t * 3) * 0.08);
+    }
     const d = Math.hypot(p.group.position.x - pos.x, p.group.position.z - pos.z);
-    if (d < 1.4){
-      state.hp = Math.min(CONFIG.maxHp, state.hp + CONFIG.medkitHeal);
-      SFX.pickup();
-      flashHeal();
+
+    if (d < 1.5){
+      if (p.kind === 'ammo'){
+        const def = wdef();
+        const before = state.owned[state.weapon] ? state.owned[state.weapon].reserve : 0;
+        giveAmmoTo(state.weapon, p.amount);
+        const after = state.owned[state.weapon] ? state.owned[state.weapon].reserve : 0;
+        SFX.pickup();
+        floatScore(p.group.position, '+' + Math.max(0, after-before) + ' ПАТР.', '#ffc93c');
+      } else if (p.kind === 'weapon'){
+        const isNew = giveWeapon(p.weaponId, undefined);
+        selectWeapon(p.weaponId);
+        SFX.weapon();
+        floatScore(p.group.position, (isNew ? '' : '+') + def_short(p.weaponId), '#' + WEAPONS[p.weaponId].color.toString(16).padStart(6,'0'));
+      } else {
+        state.hp = Math.min(CONFIG.maxHp, state.hp + CONFIG.medkitHeal);
+        SFX.pickup();
+        flashHeal();
+        floatScore(p.group.position, '+' + CONFIG.medkitHeal, '#39ff14');
+      }
       updateHUD();
       scene.remove(p.group);
       pickups.splice(i, 1);
@@ -1583,6 +1962,8 @@ const ui = {
   hp:    document.getElementById('uiHp'),
   fill:  document.getElementById('healthFill'),
   ammo:  document.getElementById('uiAmmo'),
+  wname: document.getElementById('uiWeapon'),
+  wlist: document.getElementById('weaponList'),
   box:   document.getElementById('healthBox'),
   banner:document.getElementById('waveBanner'),
   reloadHint: document.getElementById('reloadHint')
@@ -1596,9 +1977,29 @@ function updateHUD(){
   ui.hp.textContent    = Math.max(0, Math.ceil(state.hp));
   ui.fill.style.width  = clamp(state.hp / CONFIG.maxHp * 100, 0, 100) + '%';
   ui.box.classList.toggle('low', state.hp <= 30);
-  ui.ammo.innerHTML = state.ammo + '<span class="rsv"> / ' + state.reserve + '</span>';
-  if (state.ammo === 0) ui.ammo.classList.add('empty');
+  ui.ammo.innerHTML = currentAmmo() + '<span class="rsv"> / ' + currentReserve() + '</span>';
+  if (currentAmmo() === 0) ui.ammo.classList.add('empty');
   else ui.ammo.classList.remove('empty');
+
+  // панель оружия: название текущего и список найденных
+  if (ui.wname){
+    const def = wdef();
+    ui.wname.textContent = def.name;
+    ui.wname.style.color = '#' + def.color.toString(16).padStart(6,'0');
+  }
+  if (ui.wlist){
+    const owned = ownedList();
+    let html = '';
+    for (let i = 0; i < owned.length; i++){
+      const id = owned[i], d = WEAPONS[id];
+      const act = id === state.weapon ? ' act' : '';
+      html += '<span class="wslot' + act + '" data-w="' + id + '">'
+            + '<b>' + (i+1) + '</b>' + d.short
+            + '<i>' + (state.owned[id] ? state.owned[id].ammo : 0)
+            + '/' + (state.owned[id] ? state.owned[id].reserve : 0) + '</i></span>';
+    }
+    ui.wlist.innerHTML = html;
+  }
 }
 
 let hitTimer = 0;
@@ -1657,9 +2058,16 @@ function resetGame(){
 
   state.wave = 0; state.score = 0; state.kills = 0; state.headshots = 0;
   state.shots = 0; state.hits = 0;
-  state.hp = CONFIG.maxHp; state.ammo = CONFIG.startAmmo; state.reserve = CONFIG.reserveAmmo;
+  state.hp = CONFIG.maxHp;
   state.reloading = 0; state.fireCooldown = 0;
   state.queue = []; state.spawnTimer = 0; state.waveActive = false; state.waveBreak = 0;
+
+  /* --- оружие: только пистолет в начале --- */
+  state.owned = {};
+  giveWeapon(START_WEAPON, CONFIG.reserveAmmo);
+  state.weapon = START_WEAPON;
+  state.owned[START_WEAPON].ammo = WEAPONS[START_WEAPON].mag;
+  buildWeaponMesh();
 
   yaw = 0; pitch = 0; bobT = 0; bobAmp = 0; recoilKick = 0; shakeAmt = 0;
   camera.position.set(0, CONFIG.eyeHeight, 0);
@@ -1742,19 +2150,22 @@ document.getElementById('btnMenu').onclick   = quitToMenu;
 /* перезарядка */
 function startReload(){
   if (state.reloading > 0) return;
-  if (state.ammo >= CONFIG.startAmmo) return;
-  if (state.reserve <= 0) return;
-  state.reloading = CONFIG.reloadTime;
+  const def = wdef();
+  if (currentAmmo() >= def.mag) return;
+  if (currentReserve() <= 0) return;
+  state.reloading = def.reloadTime;
   SFX.reload();
   ui.reloadHint.classList.add('on');
   ui.reloadHint.classList.remove('hiddenTrack');
   crosshair.classList.add('reloading');
 }
 function finishReload(){
-  const need = CONFIG.startAmmo - state.ammo;
-  const take = Math.min(need, state.reserve);
-  state.ammo += take;
-  state.reserve -= take;
+  const def = wdef();
+  const need = def.mag - currentAmmo();
+  const res = currentReserve();
+  const take = Math.min(need, res);
+  setAmmo(state.weapon, currentAmmo() + take);
+  setReserve(res - take);
   state.reloading = 0;
   ui.reloadHint.classList.remove('on');
   crosshair.classList.remove('reloading');
@@ -1787,6 +2198,42 @@ if (!ok){
 }
 
 function uiLeftInit(){ updateHUD(); }
+
+/* ---- отладочный доступ (только по #debug) ---- */
+if (location.hash === '#debug'){
+  window.__arena = {
+    state, CONFIG, WEAPONS, WEAPON_LIST,
+    monsters, pickups,
+    dropLoot, dropAmmo, dropWeapon, dropMedkit,
+    giveWeapon, selectWeapon, selectBySlot, cycleWeapon,
+    hasWeapon, ownedList, wdef, currentReserve, currentAmmo, setAmmo, getAmmo, giveAmmoTo,
+    startGame, resetGame, fire, startReload, finishReload,
+    damageMonster, killMonster, splashDamage,
+    tick: function(dt){ update(dt||0.016); },
+    spawnMonster: spawnMonster,
+    beginWave: beginWave,
+    buildWave: buildWave,
+    movePlayer: function(x,z){ camera.position.set(x, CONFIG.eyeHeight, z); },
+    makeMonsterAt: function(x,z,type){
+      // создаём монстра вручную для теста
+      const cfg = TYPES[type||'goblin'];
+      const m = spawnMonster ? null : null;
+      return null;
+    },
+    // нанести урон первому живому монстру (для проверки лута)
+    killFirst: function(){
+      const m = monsters.find(x => !x.dead);
+      if (!m) return null;
+      killMonster(m, false);
+      return m.group.position.toArray();
+    },
+    countPickups: function(){ return pickups.length; },
+    pickupKinds: function(){ return pickups.map(p => p.kind); },
+    forceWeapon: function(id){ giveWeapon(id, undefined); selectWeapon(id); },
+    addMonsters: function(n){ if (typeof queueWaveMonsters === 'function'){} }
+  };
+}
+
 </script>
 </body>
 </html>

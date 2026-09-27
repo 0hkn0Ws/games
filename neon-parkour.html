@@ -1,0 +1,2331 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>НЕОН-ПАРКУР — 3D платформер</title>
+<style>
+  :root{
+    --neon:#3ce8ff; --neon2:#ff3cc8; --gold:#ffc93c; --ok:#7cffb0; --bad:#ff4d6d;
+    --bg:#03050c; --panel:rgba(6,10,20,.62);
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{ width:100%; height:100%; overflow:hidden; background:var(--bg); }
+  body{ font-family:"Segoe UI",Roboto,Arial,sans-serif; color:#e8f4ff;
+        user-select:none; -webkit-tap-highlight-color:transparent; }
+  #game{ display:block; width:100%; height:100%; }
+  body.locked{ cursor:none; }
+
+  /* ---------- HUD ---------- */
+  #hud{ position:fixed; inset:0; pointer-events:none; padding:16px 20px;
+        display:flex; flex-direction:column; justify-content:space-between;
+        opacity:0; transition:opacity .35s; }
+  #hud.on{ opacity:1; }
+  .row{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+  .panel{ background:var(--panel); border:1px solid rgba(60,232,255,.22); border-radius:10px;
+          padding:7px 14px; backdrop-filter:blur(7px); }
+  .panel.center{ text-align:center; } .panel.right{ text-align:right; }
+  .label{ font-size:9px; letter-spacing:2.4px; text-transform:uppercase; color:#7d97ad; }
+  .value{ font-size:22px; font-weight:800; line-height:1.15; font-variant-numeric:tabular-nums;
+          text-shadow:0 0 14px rgba(60,232,255,.55); }
+  .panel.gold .value{ color:var(--gold); text-shadow:0 0 14px rgba(255,201,60,.6); }
+  .panel.ok .value{ color:var(--ok); text-shadow:0 0 14px rgba(124,255,176,.6); }
+
+  #stam{ min-width:210px; background:var(--panel); border:1px solid rgba(255,60,200,.28);
+         border-radius:10px; padding:7px 13px; backdrop-filter:blur(7px); }
+  #stam .head{ display:flex; justify-content:space-between; margin-bottom:4px; }
+  #stam .num{ font-size:16px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .bar{ height:8px; border-radius:5px; background:rgba(255,255,255,.1); overflow:hidden; }
+  #stamFill{ height:100%; width:100%; background:linear-gradient(90deg,#ff3cc8,#3ce8ff);
+             box-shadow:0 0 14px rgba(255,60,200,.6); transition:width .1s; }
+  #stam.low #stamFill{ background:linear-gradient(90deg,#ff4d6d,#ff9a3c); }
+
+  #banner{ position:absolute; top:13%; left:0; right:0; text-align:center;
+           font-size:clamp(24px,5vw,54px); font-weight:900; letter-spacing:9px; color:#fff;
+           text-shadow:0 0 26px rgba(60,232,255,.85), 0 0 70px rgba(60,232,255,.45);
+           opacity:0; transform:scale(.9); transition:opacity .3s, transform .3s; }
+  #banner.on{ opacity:1; transform:scale(1); }
+
+  #hint{ position:absolute; bottom:16%; left:0; right:0; text-align:center;
+         font-size:clamp(12px,2.2vw,17px); font-weight:700; color:#cfe8ff;
+         text-shadow:0 2px 10px #000; opacity:0; transition:opacity .3s; }
+  #hint.on{ opacity:1; }
+
+  /* ---------- экраны ---------- */
+  #menu{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+         background:radial-gradient(ellipse at 50% 30%,rgba(30,20,55,.72),rgba(3,5,12,.96));
+         z-index:20; padding:20px; overflow-y:auto; }
+  .card{ width:min(760px,94%); background:linear-gradient(180deg,#161c33,#0b1020);
+         border:1px solid rgba(60,232,255,.24); border-radius:22px; padding:26px 30px 24px;
+         text-align:center; box-shadow:0 24px 60px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.08); }
+  h1{ font-size:clamp(30px,6.4vw,52px); font-weight:900; letter-spacing:2px; line-height:1.08;
+      background:linear-gradient(180deg,#bff4ff,#3ce8ff 45%,#ff3cc8);
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+      filter:drop-shadow(0 0 22px rgba(60,232,255,.4)); }
+  .sub{ font-size:clamp(12px,2.3vw,15px); color:#9fb6cc; margin:10px 0 20px; line-height:1.6; }
+  h2{ font-size:clamp(19px,3.6vw,27px); font-weight:800; color:#bff4ff; margin-bottom:8px; }
+  h3{ font-size:11px; letter-spacing:2.6px; text-transform:uppercase; color:#7fd7ff;
+      margin:16px 0 8px; font-weight:800; }
+  p{ font-size:clamp(12px,2.2vw,14px); line-height:1.6; color:#c6d8ea; margin:7px 0; }
+
+  .btn{ font-family:inherit; font-size:clamp(13px,2.4vw,16px); font-weight:800;
+        padding:11px 22px; margin:5px; border:none; border-radius:13px; cursor:pointer;
+        color:#04121a; background:linear-gradient(180deg,#8ef0ff,#2fc9e8);
+        box-shadow:0 5px 0 #16788f, 0 9px 20px rgba(0,0,0,.35);
+        transition:transform .08s, box-shadow .08s, filter .12s; }
+  .btn:hover{ filter:brightness(1.08); }
+  .btn:active{ transform:translateY(4px); box-shadow:0 1px 0 #16788f; }
+  .btn.alt{ color:#1a0413; background:linear-gradient(180deg,#ff9de3,#ff3cc8);
+            box-shadow:0 5px 0 #9c1f76, 0 9px 20px rgba(0,0,0,.35); }
+  .btn.alt:active{ box-shadow:0 1px 0 #9c1f76; }
+  .btn.gold{ color:#241a00; background:linear-gradient(180deg,#ffe08a,#ffc93c);
+             box-shadow:0 5px 0 #a97f16, 0 9px 20px rgba(0,0,0,.35); }
+  .btn.gold:active{ box-shadow:0 1px 0 #a97f16; }
+  .btn.dim{ color:#dbe7f5; background:linear-gradient(180deg,#5d6b86,#3d4760);
+            box-shadow:0 5px 0 #232a3c; }
+  .btn.dim:active{ box-shadow:0 1px 0 #232a3c; }
+  .btn.small{ font-size:12px; padding:8px 14px; border-radius:10px; }
+
+  .modes{ display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+          margin:6px 0 4px; }
+  .mode{ background:linear-gradient(180deg,#1d2740,#131a2c); border:1px solid rgba(255,255,255,.09);
+         border-radius:16px; padding:16px 14px; cursor:pointer; text-align:left;
+         transition:transform .12s, border-color .12s, box-shadow .12s; }
+  .mode:hover{ transform:translateY(-4px); border-color:rgba(60,232,255,.6);
+               box-shadow:0 14px 30px rgba(0,0,0,.45); }
+  .mode .ic{ font-size:30px; line-height:1; margin-bottom:7px; }
+  .mode b{ display:block; font-size:15px; color:#bff4ff; margin-bottom:4px; }
+  .mode i{ font-style:normal; font-size:12.5px; color:#93a8bf; line-height:1.45; display:block; }
+
+  .keys{ display:grid; gap:7px; grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+         margin:8px 0 4px; text-align:left; }
+  .key{ background:rgba(255,255,255,.055); border-radius:10px; padding:8px 11px;
+        font-size:12.5px; color:#d3e3f2; display:flex; align-items:center; gap:9px; }
+  .key b{ background:#eaf6ff; color:#0a1420; border-radius:6px; padding:2px 8px;
+          font-size:11px; font-weight:900; box-shadow:0 2px 0 #93a8bf; white-space:nowrap; }
+  .stat{ display:flex; gap:20px; justify-content:center; flex-wrap:wrap; margin:12px 0 6px; }
+  .stat div{ text-align:center; }
+  .stat .v{ font-size:26px; font-weight:900; color:var(--gold); font-variant-numeric:tabular-nums; }
+  .stat .k{ font-size:10px; letter-spacing:2px; text-transform:uppercase; color:#7d97ad; }
+  .rank{ font-size:clamp(20px,4vw,30px); font-weight:900; color:var(--gold); margin:10px 0 4px;
+         text-shadow:0 0 22px rgba(255,201,60,.55); }
+
+  /* ---------- тач ---------- */
+  #touch{ position:fixed; inset:0; pointer-events:none; z-index:10; display:none; }
+  #touch.on{ display:block; }
+  .tbtn{ position:absolute; pointer-events:auto; border-radius:50%;
+         background:rgba(120,200,255,.16); border:1.5px solid rgba(160,220,255,.42);
+         color:#eaf6ff; font-size:13px; font-weight:800; display:flex;
+         align-items:center; justify-content:center; backdrop-filter:blur(3px); }
+  .tbtn:active{ background:rgba(60,232,255,.5); }
+
+  @media (max-width:560px){
+    .card{ padding:20px 18px 18px; border-radius:18px; }
+    #hud{ padding:10px 12px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="row">
+    <div id="stam">
+      <div class="head"><span class="label">Хват</span><span class="num" id="stamNum">100</span></div>
+      <div class="bar"><div id="stamFill"></div></div>
+    </div>
+    <div class="panel center">
+      <div class="label" id="lvlLabel">Уровень</div>
+      <div class="value" id="lvlVal">—</div>
+    </div>
+    <div class="panel gold">
+      <div class="label" id="scoreLabel">Очки</div>
+      <div class="value" id="scoreVal">0</div>
+    </div>
+  </div>
+  <div class="row" style="align-items:flex-end">
+    <div class="panel ok"><div class="label">Чекпоинт</div><div class="value" id="cpVal">—</div></div>
+    <div class="panel right"><div class="label">Скорость</div><div class="value" id="spdVal">0</div></div>
+  </div>
+</div>
+
+<div id="banner"></div>
+<div id="hint"></div>
+<div id="touch"></div>
+
+<div id="menu"></div>
+
+<script src="three.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* ============================================================================
+   НЕОН-ПАРКУР — 3D платформер от третьего лица
+   Бесконечные уровни, лазание по стенам, канаты, провал с индейцами.
+   ============================================================================ */
+
+/* ---------------------------------- утилиты --------------------------------- */
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function rnd(a,b){ return a+Math.random()*(b-a); }
+function irnd(a,b){ return Math.floor(rnd(a,b+1)); }
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function damp(a,b,l,dt){ return lerp(a,b,1-Math.exp(-l*dt)); }
+/* детерминированный ГПСЧ — уровни всегда одинаковые по сиду */
+function mulberry32(s){
+  return function(){
+    s|=0; s=s+0x6D2B79F5|0;
+    var t=Math.imul(s^s>>>15,1|s);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+function el(id){ return document.getElementById(id); }
+
+/* ---------------------------------- звук ------------------------------------ */
+var AC=null, noiseBuf=null, masterGain=null;
+function actx(){
+  if(!AC){
+    try{
+      AC=new (window.AudioContext||window.webkitAudioContext)();
+      masterGain=AC.createGain();
+      masterGain.gain.value=0.5;
+      masterGain.connect(AC.destination);
+      noiseBuf=AC.createBuffer(1, AC.sampleRate*1.0, AC.sampleRate);
+      var d=noiseBuf.getChannelData(0);
+      for(var i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+    }catch(e){ AC=false; }
+  }
+  return AC;
+}
+function tone(f,dur,type,vol,slide,delay){
+  if(!S.sound) return;
+  var a=actx(); if(!a) return;
+  var t0=a.currentTime+(delay||0);
+  try{
+    var o=a.createOscillator(), g=a.createGain();
+    o.type=type||'sine'; o.frequency.setValueAtTime(f,t0);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide), t0+dur);
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(vol||0.05, t0+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    o.connect(g); g.connect(masterGain); o.start(t0); o.stop(t0+dur+0.05);
+  }catch(e){}
+}
+function noise(dur,vol,freq,q,delay){
+  if(!S.sound) return;
+  var a=actx(); if(!a||!noiseBuf) return;
+  var t0=a.currentTime+(delay||0);
+  try{
+    var s=a.createBufferSource(); s.buffer=noiseBuf;
+    var f=a.createBiquadFilter(); f.type='bandpass';
+    f.frequency.value=freq||900; f.Q.value=q||1.1;
+    var g=a.createGain();
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(vol||0.07, t0+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    s.connect(f); f.connect(g); g.connect(masterGain); s.start(t0); s.stop(t0+dur+0.05);
+  }catch(e){}
+}
+var SFX={
+  jump:   function(){ tone(360,0.14,'sine',0.05,260); },
+  dbljump:function(){ tone(520,0.13,'sine',0.05,320); tone(760,0.1,'triangle',0.04,0,0.06); },
+  land:   function(){ noise(0.12,0.05,420,0.9); tone(150,0.09,'sine',0.04,-40); },
+  step:   function(){ noise(0.05,0.018,700,1.2); },
+  wall:   function(){ noise(0.1,0.035,1500,1.4); },
+  climb:  function(){ noise(0.07,0.022,1100,1.5); },
+  rope:   function(){ tone(240,0.14,'triangle',0.05,140); noise(0.16,0.04,700,1.0); },
+  release:function(){ tone(620,0.12,'sine',0.05,240); },
+  cp:     function(){ tone(680,0.1,'triangle',0.07); tone(1020,0.16,'sine',0.06,0,0.08); },
+  finish: function(){ [523,659,784,1046,1318].forEach(function(f,i){ tone(f,0.34,'triangle',0.07,0,i*0.1); }); },
+  die:    function(){ tone(220,0.5,'sawtooth',0.08,-150); noise(0.4,0.08,300,0.8,0.05); },
+  whoosh: function(){ noise(0.16,0.045,1300,1.2); },
+  beat:   function(){ noise(0.09,0.075,520,0.7); tone(130,0.1,'square',0.05,-50); },
+  yell:   function(){ tone(420,0.22,'sawtooth',0.05,220); tone(560,0.2,'triangle',0.04,180,0.12); },
+  fail:   function(){ [392,330,262,196].forEach(function(f,i){ tone(f,0.32,'sine',0.06,0,i*0.13); }); }
+};
+
+/* ------------------------------- состояние игры ----------------------------- */
+var S={
+  mode:'menu',           // menu | tutorial | campaign | endless | pause | dead | win | over
+  sound:true,
+  level:1, levelCount:6,
+  score:0, best:0,
+  cpIndex:0, cpTotal:0,
+  distance:0, bestDistance:0,
+  time:0
+};
+
+/* ------------------------------ палитры неона ------------------------------- */
+var PALETTES=[
+  {name:'Киберполночь', bg:0x05070f, fog:0x05070f, a:0x3ce8ff, b:0xff3cc8, c:0xffc93c, plat:0x0d1424},
+  {name:'Закат',        bg:0x120612, fog:0x1a0818, a:0xff9a3c, b:0xff3c6e, c:0xffe066, plat:0x241018},
+  {name:'Токсин',       bg:0x03110c, fog:0x04160f, a:0x4dff9a, b:0xd4ff3c, c:0x3ce8ff, plat:0x0a1e16},
+  {name:'Лёд',          bg:0x040c18, fog:0x061420, a:0x8fd8ff, b:0x4d8cff, c:0xffffff, plat:0x0d1a2c},
+  {name:'Пустота',      bg:0x0b0418, fog:0x120826, a:0xb45cff, b:0xff5cc8, c:0x5cffe0, plat:0x180d2c},
+  {name:'Магма',        bg:0x140603, fog:0x1c0a05, a:0xff6b3c, b:0xffd23c, c:0xff2e4d, plat:0x2a1208}
+];
+
+/* ---------------------------------- THREE ----------------------------------- */
+var canvas=el('game');
+var renderer, scene, camera;
+var glowTex=null;
+
+function makeGlowTexture(){
+  var cv=document.createElement('canvas'); cv.width=cv.height=128;
+  var g=cv.getContext('2d');
+  var grd=g.createRadialGradient(64,64,0,64,64,64);
+  grd.addColorStop(0,'rgba(255,255,255,1)');
+  grd.addColorStop(0.25,'rgba(255,255,255,.55)');
+  grd.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=grd; g.fillRect(0,0,128,128);
+  var t=new THREE.CanvasTexture(cv);
+  return t;
+}
+
+function initThree(){
+  renderer=new THREE.WebGLRenderer({canvas:canvas, antialias:true, powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  if(THREE.sRGBEncoding!==undefined) renderer.outputEncoding=THREE.sRGBEncoding;
+  if(THREE.ACESFilmicToneMapping) renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.15;
+
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(72, window.innerWidth/window.innerHeight, 0.1, 900);
+
+  glowTex=makeGlowTexture();
+
+  window.addEventListener('resize',function(){
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect=window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+  });
+}
+
+/* свет, туман и фоновые огни подбираются под палитру уровня */
+var worldLights={ hemi:null, dir:null, amb:null };
+function applyPalette(pal){
+  scene.background=new THREE.Color(pal.bg);
+  scene.fog=new THREE.FogExp2(pal.fog, 0.0125);
+
+  if(!worldLights.hemi){
+    worldLights.hemi=new THREE.HemisphereLight(0xffffff,0x101828,0.55);
+    scene.add(worldLights.hemi);
+    worldLights.dir=new THREE.DirectionalLight(0xffffff,0.85);
+    worldLights.dir.position.set(22,42,16);
+    worldLights.dir.castShadow=true;
+    worldLights.dir.shadow.mapSize.width=1024;
+    worldLights.dir.shadow.mapSize.height=1024;
+    worldLights.dir.shadow.camera.near=1;
+    worldLights.dir.shadow.camera.far=140;
+    var sc=worldLights.dir.shadow.camera;
+    sc.left=-60; sc.right=60; sc.top=60; sc.bottom=-60;
+    scene.add(worldLights.dir);
+    worldLights.amb=new THREE.AmbientLight(0xffffff,0.22);
+    scene.add(worldLights.amb);
+  }
+  worldLights.hemi.color=new THREE.Color(pal.a);
+  worldLights.hemi.groundColor=new THREE.Color(pal.plat);
+  worldLights.hemi.intensity=0.5;
+  worldLights.dir.color=new THREE.Color(pal.c);
+  worldLights.dir.intensity=0.8;
+  worldLights.amb.color=new THREE.Color(pal.b);
+  worldLights.amb.intensity=0.2;
+}
+
+/* --------------------------------- помощники -------------------------------- */
+/* светящаяся точка (спрайт) */
+function glowSprite(color,size,opacity){
+  var m=new THREE.SpriteMaterial({
+    map:glowTex, color:color, transparent:true, opacity:opacity===undefined?0.85:opacity,
+    blending:THREE.AdditiveBlending, depthWrite:false
+  });
+  var s=new THREE.Sprite(m);
+  s.scale.set(size,size,1);
+  return s;
+}
+/* материал платформы с неоновыми гранями */
+function makeNeonBox(w,h,d, bodyColor, edgeColor, emissive){
+  var grp=new THREE.Group();
+  var mat=new THREE.MeshStandardMaterial({
+    color:bodyColor, roughness:0.55, metalness:0.35,
+    emissive:new THREE.Color(emissive||edgeColor), emissiveIntensity:0.14
+  });
+  var body=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+  body.castShadow=true; body.receiveShadow=true;
+  grp.add(body);
+  // неоновые рёбра
+  var eg=new THREE.EdgesGeometry(new THREE.BoxGeometry(w*1.005,h*1.005,d*1.005));
+  var line=new THREE.LineSegments(eg, new THREE.LineBasicMaterial({color:edgeColor}));
+  grp.add(line);
+  // верхняя светящаяся кромка
+  var strip=new THREE.Mesh(
+    new THREE.BoxGeometry(w*0.98, 0.06, d*0.98),
+    new THREE.MeshBasicMaterial({color:edgeColor, transparent:true, opacity:0.85})
+  );
+  strip.position.y=h/2+0.03;
+  grp.add(strip);
+  return grp;
+}
+
+/* ================================ МИР УРОВНЯ =============================== */
+var world={
+  group:null, pal:PALETTES[0],
+  platforms:[],      // {mesh, hx,hy,hz, moving, base}
+  ropes:[],          // {anchor, len, mesh, active}
+  checkpoints:[],    // {pos, mesh, glow, taken}
+  finish:null,       // {pos, mesh}
+  killY:-16,
+  startPos:new THREE.Vector3(0,2,0),
+  palIndex:0
+};
+
+function clearWorld(){
+  if(!world.group) return;
+  scene.remove(world.group);
+  world.group.traverse(function(o){
+    if(o.geometry) o.geometry.dispose();
+    if(o.material){ if(Array.isArray(o.material)) o.material.forEach(function(m){m.dispose();}); else o.material.dispose(); }
+  });
+  world.group=null;
+  world.platforms=[]; world.ropes=[]; world.checkpoints=[]; world.finish=null;
+}
+function ensureWorld(palIndex){
+  if(!world.group){ world.group=new THREE.Group(); scene.add(world.group); }
+  if(palIndex!==undefined && palIndex!==world.palIndex){
+    world.palIndex=palIndex;
+    world.pal=PALETTES[palIndex%PALETTES.length];
+    applyPalette(world.pal);
+  }
+  return world.pal;
+}
+
+function addPlatform(x,y,z,w,h,d,edgeColor,opts){
+  opts=opts||{};
+  var pal=world.pal;
+  var grp=makeNeonBox(w,h,d, pal.plat, edgeColor, edgeColor);
+  grp.position.set(x,y,z);
+  world.group.add(grp);
+  var glow=glowSprite(edgeColor, Math.max(w,d)*1.5, 0.16);
+  glow.position.set(x,y+h/2+0.2,z);
+  world.group.add(glow);
+  var p={
+    mesh:grp, glow:glow,
+    hx:w/2, hy:h/2, hz:d/2,
+    edge:edgeColor,
+    moving:opts.moving||null,
+    base:new THREE.Vector3(x,y,z),
+    hazard:!!opts.hazard,
+    bounce:!!opts.bounce
+  };
+  if(opts.moving){
+    p.moving={
+      axis:opts.moving.axis||'x',
+      amp:opts.moving.amp||3,
+      speed:opts.moving.speed||1,
+      phase:opts.moving.phase||0,
+      y:opts.moving.y||0
+    };
+  }
+  world.platforms.push(p);
+  return p;
+}
+function platformAABB(p){
+  var pos=p.mesh.position;
+  return { minX:pos.x-p.hx, maxX:pos.x+p.hx,
+           minY:pos.y-p.hy, maxY:pos.y+p.hy,
+           minZ:pos.z-p.hz, maxZ:pos.z+p.hz };
+}
+
+/* ------------------------------- КАНАТЫ ------------------------------------- */
+function addRope(x,y,z,length,color){
+  var grp=new THREE.Group();
+  // крюк-якорь
+  var anchorMesh=new THREE.Mesh(
+    new THREE.SphereGeometry(0.22,12,10),
+    new THREE.MeshBasicMaterial({color:color})
+  );
+  anchorMesh.position.set(x,y,z);
+  grp.add(anchorMesh);
+  grp.add((function(){ var g=glowSprite(color,3.2,0.5); g.position.set(x,y,z); return g; })());
+  // сам канат — цилиндр, который будем поворачивать
+  var ropeMesh=new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055,0.055,length,8),
+    new THREE.MeshStandardMaterial({color:0x2a3450, emissive:new THREE.Color(color), emissiveIntensity:0.5, roughness:0.7, metalness:0.2})
+  );
+  // по умолчанию висит вниз
+  ropeMesh.position.set(x, y-length/2, z);
+  grp.add(ropeMesh);
+  // груз на конце (за него держимся)
+  var knob=new THREE.Mesh(
+    new THREE.SphereGeometry(0.16,10,8),
+    new THREE.MeshBasicMaterial({color:color, transparent:true, opacity:0.9})
+  );
+  knob.position.set(x, y-length, z);
+  grp.add(knob);
+  world.group.add(grp);
+  var r={
+    anchor:new THREE.Vector3(x,y,z),
+    len:length, mesh:grp, ropeMesh:ropeMesh, knob:knob, color:color,
+    holdPos:new THREE.Vector3(x,y-length,z)
+  };
+  world.ropes.push(r);
+  return r;
+}
+/* пересчитать вид каната под текущее положение игрока */
+function orientRope(r, attachPoint){
+  var a=r.anchor;
+  var dx=attachPoint.x-a.x, dy=attachPoint.y-a.y, dz=attachPoint.z-a.z;
+  var dist=Math.sqrt(dx*dx+dy*dy+dz*dz)||0.001;
+  r.ropeMesh.position.set((a.x+attachPoint.x)/2,(a.y+attachPoint.y)/2,(a.z+attachPoint.z)/2);
+  r.ropeMesh.scale.set(1, dist/r.len, 1);
+  var dir=new THREE.Vector3(dx/dist,dy/dist,dz/dist);
+  var up=new THREE.Vector3(0,1,0);
+  var q=new THREE.Quaternion().setFromUnitVectors(up, dir);
+  r.ropeMesh.quaternion.copy(q);
+  r.knob.position.copy(attachPoint);
+}
+
+/* ----------------------------- ЧЕКПОИНТЫ ------------------------------------ */
+function addCheckpoint(x,y,z,index){
+  var grp=new THREE.Group();
+  var ring=new THREE.Mesh(
+    new THREE.TorusGeometry(1.5,0.1,10,32),
+    new THREE.MeshBasicMaterial({color:world.pal.c, transparent:true, opacity:0.85})
+  );
+  ring.rotation.x=Math.PI/2;
+  ring.position.set(x,y+1.6,z);
+  grp.add(ring);
+  var g=glowSprite(world.pal.c, 7, 0.4); g.position.set(x,y+1.6,z); grp.add(g);
+  var pad=new THREE.Mesh(
+    new THREE.CylinderGeometry(1.5,1.5,0.08,26),
+    new THREE.MeshBasicMaterial({color:world.pal.c, transparent:true, opacity:0.35})
+  );
+  pad.position.set(x,y+0.06,z);
+  grp.add(pad);
+  world.group.add(grp);
+  var cp={ pos:new THREE.Vector3(x,y,z), mesh:grp, ring:ring, glow:g, taken:false, index:index,
+           color:world.pal.c };
+  world.checkpoints.push(cp);
+  return cp;
+}
+function addFinish(x,y,z){
+  var pal=world.pal;
+  var grp=new THREE.Group();
+  var ring=new THREE.Mesh(
+    new THREE.TorusGeometry(2.3,0.18,12,40),
+    new THREE.MeshBasicMaterial({color:pal.a})
+  );
+  ring.position.set(x,y+2.6,z);
+  grp.add(ring);
+  var g=glowSprite(pal.a,13,0.55); g.position.set(x,y+2.6,z); grp.add(g);
+  for(var i=0;i<8;i++){
+    var a=i/8*Math.PI*2;
+    var beam=new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07,0.07,3.4,7),
+      new THREE.MeshBasicMaterial({color:pal.c, transparent:true, opacity:0.7})
+    );
+    beam.position.set(x+Math.cos(a)*2.3, y+2.6+Math.sin(a)*2.3, z);
+    beam.rotation.z=-a;
+    grp.add(beam);
+  }
+  world.group.add(grp);
+  world.finish={ pos:new THREE.Vector3(x,y,z), mesh:grp, ring:ring, glow:g };
+}
+
+/* ============================ ГЕНЕРАЦИЯ УРОВНЕЙ ============================= */
+/* Сегменты — простые блоки уровня. Каждый возвращает точку, где кончается. */
+var SEG_TYPES=['flat','gap','stairs','pillars','moving','wall','rope','longjump','spiral','bridge'];
+
+function segDifficulty(mode, level, distance){
+  if(mode==='endless') return clamp(distance/260, 0, 1);
+  return clamp((level-1)/Math.max(1, S.levelCount-1), 0, 1);
+}
+
+function buildLevel(mode, seed, level, difficulty){
+  clearWorld();
+  /* палитра зависит от уровня/сида */
+  var palIdx = mode==='endless' ? (seed%PALETTES.length) : ((level-1)%PALETTES.length);
+  ensureWorld(palIdx);
+  var pal=world.pal;
+  var rng=mulberry32(seed);
+  var d=difficulty;
+
+  var cursor=new THREE.Vector3(0,0,0);
+  cursor.x=0; cursor.y=0; cursor.z=0;
+
+  /* стартовая площадка */
+  var startW=8, startD=8;
+  addPlatform(0, -0.5, 0, startW, 1, startD, pal.a);
+  world.startPos.set(0, 1.6, 0);
+
+  var firstCP=addCheckpoint(0,0,0,0);
+  firstCP.taken=true;
+  world.cpIndex=0;
+
+  /* для бесконечного строим только стартовый кусок —
+     остальное добавляется на ходу через extendEndless */
+  var count = (mode==='endless') ? 6 : (5 + level);
+  var z=cursor.z - startD/2;
+
+  var lastCPZ=z;
+  var cpEvery = 4;
+
+  for(var i=0;i<count;i++){
+    var type;
+    if(i<1) type='flat';
+    else type = SEG_TYPES[Math.floor(rng()*SEG_TYPES.length)];
+    /* на старте избегаем сложных сегментов */
+    if(i<2 && (type==='spiral'||type==='longjump')) type='gap';
+
+    var stepD=d;
+    var seg=buildSegment(type, z, rng, stepD, pal, i);
+    z=seg.endZ;
+
+    /* чекпоинт каждые N сегментов */
+    if(i>0 && i%cpEvery===0){
+      var cpX=seg.cpX!==undefined?seg.cpX:0;
+      var cpY=seg.cpY!==undefined?seg.cpY:0;
+      addCheckpoint(cpX, cpY, z, world.checkpoints.length);
+    }
+  }
+
+  /* ---- ФИНИШНАЯ ПЛОЩАДКА: стыкуем ВНАХЛЁСТ, чтобы не было щели ---- */
+  if(mode!=='endless'){
+    var last=world.platforms.length? world.platforms[world.platforms.length-1] : null;
+    var finY=0;
+    if(last) finY=last.mesh.position.y;           // та же высота, что у последнего сегмента
+    var finW=14, finD=14;
+    if(last){
+      var lastNear=last.mesh.position.z - last.hz;      // дальний край последнего сегмента
+      var finCenterZ=lastNear - finD/2 + 2.0;           // нахлёст 2 м — щели нет
+      addPlatform(0, finY-0.5, finCenterZ, finW, 1, finD, pal.c);
+      addFinish(0, finY, finCenterZ);                    // финиш в центре площадки
+      z=finCenterZ - finD/2;
+    } else {
+      addPlatform(0, finY-0.5, z - finD/2, finW, 1, finD, pal.c);
+      addFinish(0, finY, z - finD/2);
+      z-=finD;
+    }
+  }
+
+  world.totalSegments=count;
+  world.lastSegZ=z;                 // докуда достроили — отсюда продолжит бесконечный
+  world.cpTotal=world.checkpoints.length;
+  world.killY = -16;
+  S.cpTotal=world.cpTotal;
+  S.cpIndex=0;
+}
+
+/* один сегмент уровня.
+   ФИЗИКА: обычный прыжок 13.2 при гравитации 32 → время 0.83с;
+   при скорости 8.2 это 6.8 м, а с двойным прыжком ~9.5 м.
+   Все разрывы строим ЗАВЕДОМО проходимыми: не больше 5.5 м на старте,
+   максимум ~7 м в конце — с запасом под двойной прыжок. */
+function buildSegment(type, z, rng, d, pal, idx){
+  var diff = clamp(0.2 + d*0.8, 0.2, 1);          // 0.2..1
+  var gap  = 3.4 + diff*2.6;                      // 3.4 .. 6.0 м — проходимо всегда
+  var w    = 9 - diff*3.0;                        // 9 .. 6 м шириной
+  var edge = (idx%2===0)? pal.a : pal.b;
+  var nextZ, cpX=0, cpY=0, finX=0, finY=0;
+
+  if(type==='flat'){
+    var dw = w+2;
+    addPlatform(0, -0.5, z - dw/2, dw, 1, dw, edge);
+    nextZ = z - dw;
+    cpX=0; cpY=0;
+  }
+  else if(type==='gap'){
+    addPlatform(0, -0.5, z - w/2, w, 1, w, edge);
+    var z2 = z - w - gap;
+    addPlatform(0, -0.5, z2 - w/2, w, 1, w, edge);
+    nextZ = z2 - w;
+    cpX=0; cpY=0;
+  }
+  else if(type==='stairs'){
+    var steps=3+Math.floor(diff*2);
+    var y=0, cz=z;
+    for(var s=0;s<steps;s++){
+      var sw=Math.max(4.2, w-s*0.5);
+      addPlatform(0, y-0.5, cz - sw/2, sw, 1, sw, edge);
+      cz -= sw + (1.2 + diff*1.0);                // подъём: маленькие разрывы
+      y += 1.0 + diff*0.45;
+    }
+    nextZ = cz; cpX=0; cpY=y;
+  }
+  else if(type==='pillars'){
+    var n=3;
+    var cx=0, cy=0, czz=z;
+    for(var p=0;p<n;p++){
+      var pw=2.4 + (1-diff)*1.0;
+      cx = (rng()-0.5) * (1.5 + diff*2.0);        // не уводим далеко вбок
+      addPlatform(cx, cy-0.5, czz - pw/2, pw, 1, pw, p===n-1?pal.c:edge);
+      czz -= pw + (1.6 + diff*1.4);               // столбики близко
+    }
+    nextZ = czz; cpX=cx; cpY=cy;
+  }
+  else if(type==='moving'){
+    addPlatform(0, -0.5, z - w/2, w, 1, w, edge);
+    /* ВАЖНО: платформы широкие, а ходят недалеко (±2.2 м максимум),
+       поэтому центральная полоса всегда накрыта — промахнуться нельзя. */
+    var mz = z - w - (gap*0.6);
+    var amp = 1.6 + diff*0.6;                     // 1.6 .. 2.2
+    var mw = Math.max(5.2, w-0.5);
+    addPlatform(0, -0.5, mz - mw/2, mw, 1, mw, pal.c,
+      {moving:{axis:'x', amp:amp, speed:0.6+diff*0.5, phase:rng()*6.28}});
+    /* между ходящими — СТОЯЧАЯ передышка, чтобы всегда было куда встать */
+    var restZ = mz - mw - (gap*0.5);
+    addPlatform(0, -0.5, restZ - 2.6, 5.2, 1, 5.2, pal.a);
+    var mz2 = restZ - 5.2 - (gap*0.55);
+    addPlatform(0, -0.5, mz2 - mw/2, mw, 1, mw, pal.c,
+      {moving:{axis:'x', amp:amp*1.05, speed:0.7+diff*0.55, phase:rng()*6.28}});
+    nextZ = mz2 - mw;
+    cpX=0; cpY=0;
+    if(diff>0.6){
+      /* вертикальная: ходит НЕВЫСОКО и всегда выше уровня пола */
+      var mz3 = nextZ - 2.6 - gap*0.5;
+      addPlatform(0, 0.6, mz3 - 2.3, 5.0, 1, 4.6, pal.a,
+        {moving:{axis:'y', amp:0.9, speed:0.75, phase:rng()*6.28, y:0}});
+      nextZ = mz3 - 4.6;
+    }
+  }
+  else if(type==='wall'){
+    /* площадка для разбега: центр z-w/2, дальний край z-w */
+    addPlatform(0, -0.5, z - w/2, w, 1, w, edge);
+    var wallH=4.5 + diff*3.0;                     // 4.5 .. 7.5 — реально залезть
+    var wallDepth=1.5;
+    var wallZ = z - w - wallDepth/2;              // стена вплотную к краю площадки
+    addPlatform(0, wallH/2 - 0.5, wallZ, w*0.95, wallH, wallDepth, pal.b);
+    /* верхняя площадка СТЫК В СТЫК со стеной (щели нет — не застрянешь) */
+    var topDepth=w;
+    var topNear = wallZ - wallDepth/2;            // дальняя грань стены
+    var topZ = topNear - topDepth/2;
+    addPlatform(0, wallH - 0.5, topZ, w, 1, topDepth, pal.c);
+    nextZ = topNear - topDepth;
+    cpX=0; cpY=wallH;
+    world.hasWall=true;
+  }
+  else if(type==='rope'){
+    /* Разбег, потом пропасть, которую берут ТОЛЬКО по канату.
+       ФИЗИКА КАНАТА: длина 6 м, качаемся и прыгаем под ~45°:
+       горизонтальная добавка ≈ 4.2 м + полёт ≈ 5 м = ~9 м.
+       Поэтому делаем пропасть 9.0-9.8 м — впритык, но реально. */
+    addPlatform(0, -0.5, z - w/2, w, 1, w, edge);
+    var takeoff = z - w;                          // ближний край пропасти
+    var span = 9.0 + diff*0.8;                    // 9.0 .. 9.8
+    var anchorZ = takeoff - 3.2;                  // крюк чуть впереди края
+    var anchorY = 6.4 + diff*0.8;
+    var ropeLen = anchorY - 0.7;
+    addRope(0, anchorY, anchorZ, ropeLen, pal.b);
+    var landNear = takeoff - span;
+    addPlatform(0, -0.5, landNear - (w+2)/2, w+2, 1, w+2, pal.a);
+    nextZ = landNear - (w+2);
+    cpX=0; cpY=0;
+    world.hasRope=true;
+  }
+  else if(type==='longjump'){
+    addPlatform(0, -0.5, z - w/2, w, 1, w, edge);
+    var runup=6;
+    addPlatform(0, -0.5, z - w - runup/2, 5, 1, runup, pal.c);
+    // разрыв 6.2 — берётся с разгона или двойным прыжком
+    var land2 = z - w - runup - 6.2;
+    addPlatform(0, -0.5, land2 - w/2, w+2, 1, w+2, pal.a);
+    nextZ = land2 - w; cpX=0; cpY=0;
+  }
+  else if(type==='spiral'){
+    /* мягкая «лесенка» вбок: боковые прыжки недалёкие */
+    var n2=4, ang=0, rad=2.6, yy=0, cz2=z;
+    for(var q=0;q<n2;q++){
+      ang += 1.0;
+      var px=Math.cos(ang)*rad, pzRaw=Math.sin(ang)*rad;
+      addPlatform(px, yy-0.5, cz2 + pzRaw*0.25, 4.6, 0.9, 4.6, q===n2-1?pal.c:edge);
+      cz2 -= 2.4;
+      yy += 0.9 + diff*0.4;
+    }
+    nextZ=cz2; cpX=0; cpY=yy;
+  }
+  else { /* bridge */
+    var len=6+Math.floor(diff*4);
+    var segs=Math.floor(len/2.2);
+    var cz3=z;
+    for(var b=0;b<segs;b++){
+      var bw2=2.6 - diff*0.5;                     // мостинки шире, чтобы не промахнуться
+      addPlatform(0, -0.5, cz3 - 1.1, bw2, 0.9, 2.2, edge);
+      cz3 -= 2.2;
+    }
+    nextZ=cz3; cpX=0; cpY=0;
+  }
+
+  return { endZ:nextZ, cpX:cpX, cpY:cpY, finX:finX, finY:finY, finishable:true };
+}
+
+/* ------------------------- БЕСКОНЕЧНЫЙ РЕЖИМ: достройка --------------------- */
+function extendEndless(){
+  var rng=S.endlessRng;
+  var diff=segDifficulty('endless',1,S.distance);
+  var edge=(S.endlessSeg%2===0)? world.pal.a : world.pal.b;
+  var type=SEG_TYPES[Math.floor(rng()*SEG_TYPES.length)];
+  if(S.endlessSeg<2) type='flat';
+  var seg=buildSegment(type, S.endlessZ, rng, diff, world.pal, S.endlessSeg);
+  S.endlessZ=seg.endZ;
+  S.endlessSeg++;
+  if(S.endlessSeg%4===0){
+    addCheckpoint(seg.cpX||0, seg.cpY||0, S.endlessZ, world.checkpoints.length);
+  }
+  // подчищаем хвост, чтобы не копить геометрию
+  while(world.platforms.length>150){
+    var p=world.platforms.shift();
+    world.group.remove(p.mesh); world.group.remove(p.glow);
+    p.mesh.traverse(function(o){ if(o.geometry)o.geometry.dispose(); });
+  }
+  while(world.ropes.length>10){ var r=world.ropes.shift(); world.group.remove(r.mesh); }
+  while(world.checkpoints.length>14){ var c=world.checkpoints.shift(); world.group.remove(c.mesh); }
+}
+
+/* ============================= ПЕРСОНАЖИ ==================================== */
+/* Небольшой человечек из примитивов с анимируемыми конечностями */
+function makeCharacter(colors){
+  var grp=new THREE.Group();
+  var cSkin=new THREE.MeshStandardMaterial({color:colors.skin, roughness:0.6, metalness:0.05});
+  var cSuit=new THREE.MeshStandardMaterial({color:colors.suit, roughness:0.5, metalness:0.25,
+                 emissive:new THREE.Color(colors.glow), emissiveIntensity:colors.glowInt||0.35});
+  var cDark=new THREE.MeshStandardMaterial({color:colors.dark, roughness:0.65, metalness:0.2});
+
+  var parts={};
+
+  // торс
+  var torso=new THREE.Mesh(new THREE.BoxGeometry(0.62,0.78,0.34), cSuit);
+  torso.position.y=1.06; torso.castShadow=true;
+  grp.add(torso);
+  parts.torso=torso;
+
+  // светящаяся полоса на груди
+  var strip=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.07,0.02),
+    new THREE.MeshBasicMaterial({color:colors.glow}));
+  strip.position.set(0,1.16,0.18);
+  torso.add(strip);
+
+  // голова
+  var head=new THREE.Mesh(new THREE.BoxGeometry(0.44,0.42,0.42), cSkin);
+  head.position.y=1.62; head.castShadow=true;
+  grp.add(head);
+  parts.head=head;
+
+  // «визор» — светящаяся полоска на лице
+  var visor=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.1,0.03),
+    new THREE.MeshBasicMaterial({color:colors.glow}));
+  visor.position.set(0,0.02,0.21);
+  head.add(visor);
+
+  // руки (с шарниром в плече)
+  function limb(len,thick,mat,ox,oy){
+    var pivot=new THREE.Group();
+    pivot.position.set(ox,oy,0);
+    var m=new THREE.Mesh(new THREE.BoxGeometry(thick,len,thick), mat);
+    m.position.y=-len/2; m.castShadow=true;
+    pivot.add(m);
+    grp.add(pivot);
+    return pivot;
+  }
+  parts.armL=limb(0.72,0.17,cSuit,-0.40,1.36);
+  parts.armR=limb(0.72,0.17,cSuit, 0.40,1.36);
+  parts.legL=limb(0.78,0.20,cDark,-0.17,0.70);
+  parts.legR=limb(0.78,0.20,cDark, 0.17,0.70);
+
+  grp.userData.parts=parts;
+  grp.userData.colors=colors;
+  return grp;
+}
+
+/* Индеец: тело, перья на голове, палка в руке */
+function makeIndian(variant){
+  var skins=[0xb5713c,0x8d5a34,0xc98a5b,0x9c6438];
+  var clothes=[0xc94f3c,0x3c7fc9,0x3cc96b,0xc9a33c,0x8a3cc9];
+  var featherCols=[0xffd166,0xff5c7a,0x6ad0ff,0x7cffb0];
+  var cSkin=new THREE.MeshStandardMaterial({color:skins[variant%skins.length], roughness:0.65});
+  var cCloth=new THREE.MeshStandardMaterial({color:clothes[variant%clothes.length], roughness:0.6});
+  var cDark=new THREE.MeshStandardMaterial({color:0x3a2a1e, roughness:0.75});
+  var cFeather=new THREE.MeshStandardMaterial({color:featherCols[variant%featherCols.length],
+                emissive:new THREE.Color(featherCols[variant%featherCols.length]), emissiveIntensity:0.5});
+
+  var grp=new THREE.Group();
+  var parts={};
+
+  var torso=new THREE.Mesh(new THREE.BoxGeometry(0.6,0.74,0.34), cSkin);
+  torso.position.y=1.02; torso.castShadow=true; grp.add(torso); parts.torso=torso;
+
+  // набедренная повязка
+  var skirt=new THREE.Mesh(new THREE.BoxGeometry(0.66,0.3,0.4), cCloth);
+  skirt.position.y=0.72; torso.add(new THREE.Object3D());
+  skirt.position.y=0.72-1.02; // относительно торса
+  skirt.position.set(0,-0.30,0);
+  torso.add(skirt);
+
+  var head=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.4,0.4), cSkin);
+  head.position.y=1.58; head.castShadow=true; grp.add(head); parts.head=head;
+
+  // глаза
+  var eyeMat=new THREE.MeshBasicMaterial({color:0x140c1c});
+  var eL=new THREE.Mesh(new THREE.BoxGeometry(0.07,0.07,0.02), eyeMat);
+  eL.position.set(-0.1,0.03,0.21); head.add(eL);
+  var eR=eL.clone(); eR.position.x=0.1; head.add(eR);
+
+  // полоса на лице
+  var paint=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.06,0.03),
+    new THREE.MeshBasicMaterial({color:0xff3c6e}));
+  paint.position.set(0,-0.08,0.205); head.add(paint);
+
+  // перья-убор
+  for(var f=0;f<5;f++){
+    var a=(f-2)*0.34;
+    var feather=new THREE.Mesh(new THREE.ConeGeometry(0.075,0.62,6), cFeather);
+    feather.position.set(Math.sin(a)*0.2, 0.36, -0.06+Math.cos(a)*0.04);
+    feather.rotation.z=-a*0.8;
+    feather.rotation.x=-0.35;
+    head.add(feather);
+  }
+  // обруч
+  var band=new THREE.Mesh(new THREE.BoxGeometry(0.46,0.09,0.44), cCloth);
+  band.position.y=0.17; head.add(band);
+
+  function limb(len,thick,mat,ox,oy){
+    var pivot=new THREE.Group();
+    pivot.position.set(ox,oy,0);
+    var m=new THREE.Mesh(new THREE.BoxGeometry(thick,len,thick), mat);
+    m.position.y=-len/2; m.castShadow=true;
+    pivot.add(m);
+    grp.add(pivot);
+    return pivot;
+  }
+  parts.armL=limb(0.68,0.16,cSkin,-0.38,1.32);
+  parts.armR=limb(0.68,0.16,cSkin, 0.38,1.32);
+  parts.legL=limb(0.74,0.19,cSkin,-0.16,0.68);
+  parts.legR=limb(0.74,0.19,cSkin, 0.16,0.68);
+
+  // палка в правой руке
+  var stick=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.06,1.15,7), cDark);
+  stick.position.y=-0.9;
+  stick.rotation.z=0.9;
+  parts.armR.add(stick);
+  parts.stick=stick;
+
+  grp.userData.parts=parts;
+  return grp;
+}
+
+/* ============================== ИГРОК ======================================= */
+var player={
+  object:null, parts:null,
+  pos:new THREE.Vector3(0,2,0),
+  vel:new THREE.Vector3(),
+  hx:0.34, hy:0.88, hz:0.34,      // полугабариты AABB (чуть меньше — прощаем края)
+  onGround:false, groundPlat:null,
+  coyote:0, jumpBuf:0,
+  airJumps:1,
+  wallNormal:null, wallPlat:null, wallCling:false, wallSide:0,
+  stamina:1, climbing:false,
+  rope:null, ropeCooldown:0,
+  facing:0,
+  runPhase:0, runSpeed:0,
+  state:'idle',  // idle|run|jump|fall|climb|swing|thrown|beaten
+  spawnPos:new THREE.Vector3(0,2,0)
+};
+
+var CAM={
+  yaw:0, pitch:-0.16,
+  dist:6.2, height:2.0,
+  pos:new THREE.Vector3(0,3,8),
+  look:new THREE.Vector3()
+};
+
+function initPlayer(){
+  player.object=makeCharacter({skin:0xf0c49a, suit:0x2a3f6e, dark:0x1a2440,
+    glow:world.pal.a, glowInt:0.5});
+  scene.add(player.object);
+  player.parts=player.object.userData.parts;
+}
+
+/* ------------------------- СОПРИКОСНОВЕНИЕ С МИРОМ -------------------------- */
+function overlapsPlat(px,py,pz,p){
+  var a=platformAABB(p);
+  return (px+player.hx>a.minX && px-player.hx<a.maxX &&
+          py+player.hy>a.minY && py-player.hy<a.maxY &&
+          pz+player.hz>a.minZ && pz-player.hz<a.maxZ);
+}
+
+/* Помощь при приземлении: если падаем РЯДОМ с краем площадки —
+   мягко подтягиваем на неё. Важно: срабатывает ТОЛЬКО когда игрок
+   уже провалился ниже края и падает, иначе мешает сходить с платформы. */
+function ledgeAssist(){
+  if(player.onGround || player.vel.y>=0) return;     // только при падении
+  var p=player.pos;
+  var assist=0.45;
+  for(var i=0;i<world.platforms.length;i++){
+    var pl=world.platforms[i];
+    if(pl.hazard) continue;
+    var a=platformAABB(pl);
+    var top=a.maxY;
+    /* ступни должны быть УЖЕ ниже края (реально провалились) */
+    if(p.y-player.hy > top-0.10) continue;
+    if(p.y-player.hy < top-1.1) continue;            // слишком далеко вниз
+    if(p.x+player.hx+assist < a.minX || p.x-player.hx-assist > a.maxX) continue;
+    if(p.z+player.hz+assist < a.minZ || p.z-player.hz-assist > a.maxZ) continue;
+    p.x=clamp(p.x, a.minX+player.hx*0.5, a.maxX-player.hx*0.5);
+    p.z=clamp(p.z, a.minZ+player.hz*0.5, a.maxZ-player.hz*0.5);
+    p.y=top+player.hy;
+    player.vel.y=0;
+    player.onGround=true;
+    player.groundPlat=pl;
+    return;
+  }
+}
+
+/* движение по одной оси с разрешением столкновений */
+function moveAxis(axis, amount){
+  if(amount===0) return;
+  var p=player.pos;
+  p[axis]+=amount;
+  var hitPlat=null, land=false;
+  for(var guard=0; guard<24; guard++){
+    var resolved=false;
+    for(var i=0;i<world.platforms.length;i++){
+      var pl=world.platforms[i];
+      if(!overlapsPlat(p.x,p.y,p.z,pl)) continue;
+      var a=platformAABB(pl);
+      if(pl.hazard) player.hitHazard=pl;
+      if(axis==='x'){
+        p.x = amount>0 ? a.minX-player.hx : a.maxX+player.hx;
+        player.vel.x=0;
+      } else if(axis==='z'){
+        p.z = amount>0 ? a.minZ-player.hz : a.maxZ+player.hz;
+        player.vel.z=0;
+      } else {
+        if(amount<0){ p.y=a.maxY+player.hy; player.vel.y=0; land=true; hitPlat=pl; }
+        else { p.y=a.minY-player.hy; player.vel.y=0; }
+      }
+      resolved=true;
+      break;                       // начинаем проверку заново, но с ограничением
+    }
+    if(!resolved) break;
+  }
+  if(axis==='y' && land){ player.onGround=true; player.groundPlat=hitPlat; }
+}
+/* выталкивание игрока из движущихся платформ, которые наехали на него */
+function resolvePlatformPush(){
+  var p=player.pos;
+  for(var guard=0; guard<8; guard++){
+    var fixed=false;
+    for(var i=0;i<world.platforms.length;i++){
+      var pl=world.platforms[i];
+      if(!pl.moving) continue;
+      if(!overlapsPlat(p.x,p.y,p.z,pl)) continue;
+      var a=platformAABB(pl);
+      // выталкиваем по оси наименьшего проникновения
+      var dl=Math.abs(p.x-(a.minX-player.hx)), dr=Math.abs((a.maxX+player.hx)-p.x);
+      var du=Math.abs(p.y-(a.maxY+player.hy)), dd=Math.abs((a.minY-player.hy)-p.y);
+      var dz1=Math.abs(p.z-(a.minZ-player.hz)), dz2=Math.abs((a.maxZ+player.hz)-p.z);
+      var m=Math.min(dl,dr,du,dd,dz1,dz2);
+      if(m===du){ p.y=a.maxY+player.hy; player.vel.y=Math.max(0,player.vel.y); player.onGround=true; player.groundPlat=pl; }
+      else if(m===dd){ p.y=a.minY-player.hy; player.vel.y=Math.min(0,player.vel.y); }
+      else if(m===dl) p.x=a.minX-player.hx;
+      else if(m===dr) p.x=a.maxX+player.hx;
+      else if(m===dz1) p.z=a.minZ-player.hz;
+      else p.z=a.maxZ+player.hz;
+      fixed=true;
+      break;
+    }
+    if(!fixed) break;
+  }
+}
+
+/* ============================ УПРАВЛЕНИЕ ==================================== */
+var keys={};
+var input={
+  moveX:0, moveZ:0, jump:false, jumpPressed:false, sprint:false,
+  use:false, usePressed:false
+};
+
+function keyCode(e){
+  if(e.code){
+    if(e.code==='Space') return 'space';
+    if(e.code==='Escape') return 'escape';
+    if(e.code==='ShiftLeft'||e.code==='ShiftRight') return 'shift';
+    if(e.code==='ArrowUp') return 'up';
+    if(e.code==='ArrowDown') return 'down';
+    if(e.code==='ArrowLeft') return 'left';
+    if(e.code==='ArrowRight') return 'right';
+    if(e.code.indexOf('Key')===0) return e.code.slice(3).toLowerCase();
+  }
+  var k=(e.key||'').toLowerCase();
+  if(k===' ') k='space';
+  if(k==='shift') k='shift';
+  return k;
+}
+
+/* ------------------------------- КАМЕРА ------------------------------------- */
+function updateCamera(dt){
+  var targetY=player.pos.y + 1.5;
+  var cy=CAM.yaw, cp=CAM.pitch;
+  var cx=player.pos.x + Math.sin(cy)*Math.cos(cp)*(-CAM.dist);
+  var cz=player.pos.z + Math.cos(cy)*Math.cos(cp)*(-CAM.dist);
+  var cyy=targetY + Math.sin(-cp)*CAM.dist + CAM.height*0.2;
+
+  // не даём камере уйти под пол
+  var want=new THREE.Vector3(cx,cyy,cz);
+  CAM.pos.lerp(want, 1-Math.exp(-9*dt));
+  CAM.look.lerp(new THREE.Vector3(player.pos.x, targetY, player.pos.z), 1-Math.exp(-14*dt));
+  camera.position.copy(CAM.pos);
+  camera.lookAt(CAM.look);
+}
+
+/* ------------------------ вращение игрока к направлению --------------------- */
+function updateFacing(dt){
+  if(Math.abs(input.moveX)>0.01 || Math.abs(input.moveZ)>0.01){
+    var targetYaw=Math.atan2(resolvedDir.x, resolvedDir.z);
+    player.facing=lerpAngle(player.facing, targetYaw, 1-Math.exp(-14*dt));
+  }
+  player.object.rotation.y=player.facing;
+}
+function lerpAngle(a,b,t){
+  var d=b-a;
+  while(d>Math.PI) d-=Math.PI*2;
+  while(d<-Math.PI) d+=Math.PI*2;
+  return a+d*t;
+}
+
+/* --------------------------- АНИМАЦИЯ ЧЕЛОВЕЧКА ----------------------------- */
+function animateCharacter(obj, opts){
+  var parts=obj.userData.parts;
+  var ph=opts.phase, sp=opts.speed, st=opts.state;
+  var A=parts.armL, B=parts.armR, L=parts.legL, R=parts.legR;
+  if(st==='run'){
+    var s=Math.sin(ph)*0.9*sp, c=Math.sin(ph+Math.PI)*0.9*sp;
+    L.rotation.x=s; R.rotation.x=c;
+    A.rotation.x=c*0.85; B.rotation.x=s*0.85;
+    A.rotation.z=0.12; B.rotation.z=-0.12;
+    parts.torso.rotation.x=0.14*sp;
+    parts.torso.position.y=1.06+Math.abs(Math.sin(ph))*0.05;
+  } else if(st==='jump'){
+    L.rotation.x=-0.5; R.rotation.x=0.35;
+    A.rotation.x=-1.5; B.rotation.x=-1.5;
+    A.rotation.z=0.3; B.rotation.z=-0.3;
+    parts.torso.rotation.x=-0.08;
+  } else if(st==='fall'){
+    L.rotation.x=0.35; R.rotation.x=-0.3;
+    A.rotation.x=-2.3; B.rotation.x=-2.3;
+    A.rotation.z=0.6; B.rotation.z=-0.6;
+    parts.torso.rotation.x=0.1;
+  } else if(st==='climb'){
+    var s2=Math.sin(ph*0.8)*0.6;
+    L.rotation.x=-0.9+s2; R.rotation.x=-0.9-s2;
+    A.rotation.x=-2.6+s2; B.rotation.x=-2.6-s2;
+    A.rotation.z=0.25; B.rotation.z=-0.25;
+    parts.torso.rotation.x=0.1;
+  } else if(st==='swing'){
+    A.rotation.x=-2.9; B.rotation.x=-2.9;
+    A.rotation.z=0.2; B.rotation.z=-0.2;
+    L.rotation.x=0.2; R.rotation.x=-0.2;
+    parts.torso.rotation.x=0.05;
+  } else if(st==='stand'){
+    var br=Math.sin(ph*0.35)*0.03;
+    L.rotation.x=0; R.rotation.x=0;
+    A.rotation.x=br; B.rotation.x=-br;
+    A.rotation.z=0.1; B.rotation.z=-0.1;
+    parts.torso.rotation.x=0;
+    parts.torso.position.y=1.06;
+  } else if(st==='down'){
+    // лежит
+    obj.rotation.z=0; // управляется снаружи
+  }
+  // плавный возврат z-наклона рук
+  A.rotation.z=damp(A.rotation.z, (st==='run'?0.12:(st==='climb'||st==='jump'||st==='fall'?0.3:0.1)), 8, opts.dt);
+  B.rotation.z=damp(B.rotation.z, -(st==='run'?0.12:(st==='climb'||st==='jump'||st==='fall'?0.3:0.1)), 8, opts.dt);
+}
+
+/* ============================== ЭФФЕКТЫ ===================================== */
+var fx={
+  trails:[],      // неоновый след
+  particles:[],   // искры
+  rings:[]        // ударные волны
+};
+function spawnTrail(x,y,z,color){
+  var s=glowSprite(color,0.9,0.5);
+  s.position.set(x,y,z);
+  scene.add(s);
+  fx.trails.push({sprite:s, life:0.35, max:0.35, scale0:0.9});
+}
+function spawnBurst(x,y,z,color,n){
+  for(var i=0;i<(n||10);i++){
+    var s=glowSprite(color, rnd(0.25,0.6), 0.9);
+    s.position.set(x,y,z);
+    scene.add(s);
+    fx.particles.push({sprite:s, life:rnd(0.35,0.8), max:0.8,
+      vx:rnd(-3,3), vy:rnd(1,5), vz:rnd(-3,3), scale0:s.scale.x});
+  }
+}
+function spawnRing(x,y,z,color){
+  var m=new THREE.Mesh(new THREE.TorusGeometry(0.5,0.06,8,26),
+    new THREE.MeshBasicMaterial({color:color, transparent:true, opacity:0.85}));
+  m.position.set(x,y,z); m.rotation.x=Math.PI/2;
+  scene.add(m);
+  fx.rings.push({mesh:m, life:0.55, max:0.55});
+}
+function updateFx(dt){
+  for(var i=fx.trails.length-1;i>=0;i--){
+    var t=fx.trails[i];
+    t.life-=dt;
+    var k=clamp(t.life/t.max,0,1);
+    t.sprite.material.opacity=0.5*k;
+    t.sprite.scale.setScalar(t.scale0*(1.6-k*0.6));
+    if(t.life<=0){ scene.remove(t.sprite); t.sprite.material.dispose(); fx.trails.splice(i,1); }
+  }
+  for(var j=fx.particles.length-1;j>=0;j--){
+    var p=fx.particles[j];
+    p.life-=dt;
+    p.vy-=14*dt;
+    p.sprite.position.x+=p.vx*dt;
+    p.sprite.position.y+=p.vy*dt;
+    p.sprite.position.z+=p.vz*dt;
+    var k2=clamp(p.life/p.max,0,1);
+    p.sprite.material.opacity=0.95*k2;
+    if(p.life<=0){ scene.remove(p.sprite); p.sprite.material.dispose(); fx.particles.splice(j,1); }
+  }
+  for(var q=fx.rings.length-1;q>=0;q--){
+    var r=fx.rings[q];
+    r.life-=dt;
+    var k3=clamp(r.life/r.max,0,1);
+    var sc=1+(1-k3)*5;
+    r.mesh.scale.setScalar(sc);
+    r.mesh.material.opacity=0.85*k3;
+    if(r.life<=0){ scene.remove(r.mesh); r.mesh.geometry.dispose(); r.mesh.material.dispose(); fx.rings.splice(q,1); }
+  }
+  // убираем следы, чтобы не копить спрайты
+  if(fx.trails.length>90){ var t0=fx.trails.shift(); scene.remove(t0.sprite); }
+}
+
+/* ============================== ИНДЕЙЦЫ ===================================== */
+var indians={ list:[], timer:0, phase:'idle', target:null, victim:null };
+
+function spawnIndians(around){
+  clearIndians();
+  var n=4;
+  for(var i=0;i<n;i++){
+    var ind=makeIndian(i);
+    var a=(i/n)*Math.PI*2 + rnd(-0.3,0.3);
+    var dist=11+rnd(0,3);
+    ind.position.set(around.x+Math.sin(a)*dist, around.y, around.z+Math.cos(a)*dist);
+    ind.userData.parts.legL.rotation.x=0;
+    ind.userData.parts.legR.rotation.x=0;
+    ind.userData.parts.armL.rotation.x=0;
+    ind.userData.parts.armR.rotation.x=0;
+    ind.userData.runPhase=0;
+    scene.add(ind);
+    indians.list.push({obj:ind, a:a, slot:i});
+  }
+}
+function clearIndians(){
+  for(var i=0;i<indians.list.length;i++){
+    scene.remove(indians.list[i].obj);
+  }
+  indians.list=[];
+}
+function updateIndians(dt){
+  if(indians.list.length===0) return;
+  var ph=indians.phase;
+  for(var i=0;i<indians.list.length;i++){
+    var it=indians.list[i], ind=it.obj;
+    var parts=ind.userData.parts;
+
+    if(ph==='run'){
+      // бегут к жертве, встают вокруг
+      var tx=player.pos.x + Math.cos(it.a)*(2.0),
+          tz=player.pos.z + Math.sin(it.a)*(2.0);
+      var dx=tx-ind.position.x, dz=tz-ind.position.z;
+      var dl=Math.hypot(dx,dz);
+      if(dl>0.25){
+        var sp=8.5;
+        ind.position.x+=dx/dl*sp*dt;
+        ind.position.z+=dz/dl*sp*dt;
+        it.obj.rotation.y=Math.atan2(dx,dz);
+        it.obj.userData.runPhase+=dt*13;
+        animateCharacter(ind,{phase:it.obj.userData.runPhase, speed:1, state:'run', dt:dt});
+        ind.position.y=player.pos.y;
+      } else {
+        ind.position.y=player.pos.y;
+        it.obj.rotation.y=Math.atan2(player.pos.x-ind.position.x, player.pos.z-ind.position.z);
+        animateCharacter(ind,{phase:0, speed:0, state:'stand', dt:dt});
+      }
+    }
+    else if(ph==='beat'){
+      // бьют палками
+      it.obj.rotation.y=Math.atan2(player.pos.x-ind.position.x, player.pos.z-ind.position.z);
+      ind.position.y=player.pos.y;
+      var sw=Math.sin(indians.timer*17 + i*1.4);
+      parts.armR.rotation.x=-1.9 + sw*1.6;
+      parts.armL.rotation.x=-0.5 + sw*0.5;
+      parts.torso.rotation.x=sw*0.16;
+      parts.legL.rotation.x=sw*0.16;
+      parts.legR.rotation.x=-sw*0.16;
+      if(sw>0.96){ SFX.beat(); GAME.shake=Math.max(GAME.shake,0.16); }
+    }
+    else if(ph==='cheer'){
+      // радуются, что закинули
+      var c=Math.sin(indians.timer*9 + i)*0.7;
+      parts.armL.rotation.x=-2.6+c*0.5;
+      parts.armR.rotation.x=-2.6-c*0.5;
+      parts.torso.rotation.x=-0.1;
+    }
+  }
+}
+
+/* =========================== ПОСЛЕДОВАТЕЛЬНОСТЬ ПРОВАЛА ===================== */
+var GAME={ shake:0, timeScale:1 };
+
+function startDeath(){
+  if(player.state==='beaten') return;
+  player.state='beaten';
+  player.vel.set(0,0,0);
+  player.rope=null;
+  SFX.die();
+  GAME.shake=0.35;
+  setBanner('ПРОВАЛ!');
+  // индейцы появляются рядом
+  spawnIndians(player.pos.clone());
+  indians.timer=0;
+  indians.phase='run';
+  S.deaths++;
+}
+function updateDeath(dt){
+  indians.timer+=dt;
+  updateIndians(dt);
+  // игрок лежит
+  var pt=player.object.rotation;
+  pt.z=damp(pt.z, Math.PI/2*0.92, 6, dt);
+  player.object.position.set(player.pos.x, player.pos.y-0.2, player.pos.z);
+
+  if(indians.phase==='run' && indians.timer>1.35){
+    indians.phase='beat'; indians.timer=0; SFX.yell();
+  }
+  else if(indians.phase==='beat' && indians.timer>2.2){
+    indians.phase='cheer'; indians.timer=0;
+    SFX.whoosh();
+    // закидываем на чекпоинт
+    var target=currentCheckpointPos();
+    launchToCheckpoint(target);
+  }
+  else if(indians.phase==='cheer' && indians.timer>1.6){
+    // конец забега в бесконечном режиме
+    if(S.mode==='endless'){
+      S.endlessLives--;
+      if(S.endlessLives<0){ clearIndians(); showEndlessOver(); return; }
+    }
+    respawnAtCheckpoint();
+  }
+}
+
+/* полёт к чекпоинту по дуге */
+var throwState=null;
+function launchToCheckpoint(target){
+  var from=player.pos.clone();
+  var dist=from.distanceTo(target);
+  throwState={ from:from, to:target.clone(), t:0, dur:clamp(0.5+dist*0.035,0.55,1.5),
+               arc:3+dist*0.28 };
+  SFX.whoosh();
+  spawnBurst(from.x,from.y+0.6,from.z, world.pal.c, 14);
+}
+function updateThrow(dt){
+  if(!throwState) return;
+  throwState.t+=dt;
+  var k=clamp(throwState.t/throwState.dur,0,1);
+  var e=k;
+  player.pos.x=lerp(throwState.from.x, throwState.to.x, e);
+  player.pos.z=lerp(throwState.from.z, throwState.to.z, e);
+  player.pos.y=lerp(throwState.from.y, throwState.to.y, e) + Math.sin(k*Math.PI)*throwState.arc;
+  player.object.position.copy(player.pos);
+  // кувырок
+  player.object.rotation.z=-k*Math.PI*2;
+  player.object.rotation.x=0;
+  if(k>=1){
+    throwState=null;
+    respawnAtCheckpoint();
+  }
+}
+function respawnAtCheckpoint(){
+  var t=currentCheckpointPos();
+  player.pos.copy(t);
+  player.pos.y+=1.0;
+  player.vel.set(0,0,0);
+  player.object.rotation.set(0,0,0);
+  player.object.position.copy(player.pos);
+  player.state='idle';
+  player.onGround=false;
+  player.rope=null;
+  player.stamina=1;
+  clearIndians();
+  SFX.land();
+  setBanner('');
+  hideHint();
+}
+function currentCheckpointPos(){
+  var best=world.startPos.clone();
+  for(var i=0;i<world.checkpoints.length;i++){
+    var cp=world.checkpoints[i];
+    if(cp.taken){ best=new THREE.Vector3(cp.pos.x, cp.pos.y, cp.pos.z); }
+  }
+  return best;
+}
+
+/* ============================ ЛОГИКА ИГРОКА ================================= */
+var resolvedDir=new THREE.Vector3();
+
+function updatePlayer(dt){
+  if(player.state==='beaten'){ updateDeath(dt); return; }
+  if(throwState){ updateThrow(dt); return; }
+
+  var pal=world.pal;
+
+  /* ---- направление от камеры ---- */
+  var fwd=new THREE.Vector3(-Math.sin(CAM.yaw),0,-Math.cos(CAM.yaw));
+  var right=new THREE.Vector3(Math.cos(CAM.yaw),0,-Math.sin(CAM.yaw));
+  var dir=new THREE.Vector3();
+  dir.addScaledVector(fwd, -input.moveZ);
+  dir.addScaledVector(right, input.moveX);
+  if(dir.lengthSq()>0.0001) dir.normalize();
+  resolvedDir.copy(dir);
+
+  var wasGround=player.onGround;
+  player.onGround=false;
+  player.groundPlat=null;
+
+  /* ---- КАНАТ ---- */
+  if(player.rope){
+    updateRopeSwing(dt);
+  } else {
+    /* ---- обычное движение ---- */
+    var speedBase=8.2;
+    var maxSpeed=(input.sprint?14.4:speedBase);
+    if(player.climbing) maxSpeed=3.6;
+
+    var accel=player.onGround?62:26;
+    var targetVX=dir.x*maxSpeed, targetVZ=dir.z*maxSpeed;
+
+    /* разгон */
+    player.vel.x=damp(player.vel.x, targetVX, accel*0.16, dt);
+    player.vel.z=damp(player.vel.z, targetVZ, accel*0.16, dt);
+
+    /* ---- ЛАЗАНИЕ ПО СТЕНАМ ---- */
+    var wall=detectWall();
+    player.wallNormal=wall?wall.normal:null;
+    player.wallPlat=wall?wall.plat:null;
+
+    /* авто-захват: коснулся стены в воздухе и есть силы — цепляешься.
+       Если держишь S (вниз) — не цепляешься, чтобы можно было спрыгнуть. */
+    if(wall && !player.onGround && player.stamina>0.05 && input.moveZ<0.55){
+      if(!player.wallCling){ player.wallCling=true; player.climbing=true; SFX.wall();
+        spawnBurst(player.pos.x,player.pos.y,player.pos.z, pal.b, 6); }
+    }
+    /* если стены больше нет или силы кончились — отпускаем */
+    if(player.wallCling && (!wall || player.stamina<=0.001)){
+      player.wallCling=false; player.climbing=false;
+    }
+
+    if(player.wallCling && wall){
+      // держимся: гравитация почти отключена
+      player.vel.y=damp(player.vel.y, 0, 8, dt);
+      // вверх/вниз по стене
+      var climbY=0;
+      if(input.moveZ< -0.2) climbY=4.4;          // W — вверх
+      else if(input.moveZ>0.2) climbY=-3.6;      // S — вниз
+      player.vel.y=damp(player.vel.y, climbY, 12, dt);
+      // прижимает к стене
+      player.vel.x=damp(player.vel.x, -wall.normal.x*1.4, 9, dt);
+      player.vel.z=damp(player.vel.z, -wall.normal.z*1.4, 9, dt);
+      // медленное сползание без ввода
+      if(Math.abs(climbY)<0.1) player.vel.y=damp(player.vel.y,-0.6,3,dt);
+      if(Math.abs(climbY)>0.1){ player.runPhase+=dt*10; if(Math.random()<0.1) SFX.climb(); }
+      // прыжок от стены
+      if(input.jumpPressed){
+        input.jumpPressed=false;
+        player.wallCling=false; player.climbing=false;
+        player.vel.set(wall.normal.x*8.0, 12.6, wall.normal.z*8.0);
+        player.airJumps=1;
+        player.coyote=0;
+        SFX.jump();
+        spawnBurst(player.pos.x,player.pos.y,player.pos.z, pal.c, 12);
+        spawnRing(player.pos.x,player.pos.y,player.pos.z, pal.c);
+      }
+    }
+
+    if(!player.wallCling){
+      /* ---- гравитация ---- */
+      player.vel.y-=32*dt;
+      if(player.vel.y<-42) player.vel.y=-42;
+      /* ---- обычный прыжок ---- */
+      if(player.coyote>0 && input.jumpPressed){
+        input.jumpPressed=false;
+        player.vel.y=13.2;
+        player.coyote=0;
+        player.airJumps=1;
+        SFX.jump();
+        spawnBurst(player.pos.x,player.pos.y-0.7,player.pos.z, pal.a, 8);
+      } else if(player.airJumps>0 && input.jumpPressed && player.coyote<=0){
+        input.jumpPressed=false;
+        player.airJumps--;
+        player.vel.y=11.6;
+        SFX.dbljump();
+        spawnRing(player.pos.x,player.pos.y-0.5,player.pos.z, pal.b);
+      }
+    }
+  }
+
+  if(player.wallCling) player.stamina=Math.max(0, player.stamina-dt*0.30);
+  else player.stamina=Math.min(1, player.stamina + dt*0.55);
+  /* ---- прыжок с каната ---- */
+  if(input.jumpPressed && player.rope){
+    input.jumpPressed=false;
+    releaseRope(true);
+  }
+  /* ---- использование каната ---- */
+  if(input.usePressed){
+    input.usePressed=false;
+    if(player.rope) releaseRope(false);
+    else tryGrabRope();
+  }
+
+  /* ---- перемещение с разрешением столкновений ---- */
+  moveAxis('x', player.vel.x*dt);
+  moveAxis('z', player.vel.z*dt);
+  moveAxis('y', player.vel.y*dt);
+  resolvePlatformPush();
+  ledgeAssist();
+
+  /* ---- coyote time ---- */
+  if(player.onGround){ player.coyote=0.13; player.airJumps=1; }
+  else player.coyote=Math.max(0, player.coyote-dt);
+
+  /* ---- приземление ---- */
+  if(player.onGround && !wasGround){
+    SFX.land();
+    spawnRing(player.pos.x, player.pos.y-0.85, player.pos.z, pal.a);
+    spawnBurst(player.pos.x,player.pos.y-0.85,player.pos.z, pal.a, 6);
+    GAME.shake=Math.min(GAME.shake+0.06, 0.3);
+  }
+
+  /* ---- опасные платформы ---- */
+  if(player.hitHazard){ player.hitHazard=null; startDeath(); return; }
+
+  /* ---- неоновый след ---- */
+  var spd=Math.hypot(player.vel.x,player.vel.z);
+  if(spd>9.5 && Math.random()<0.5){
+    spawnTrail(player.pos.x, player.pos.y-0.4, player.pos.z, pal.a);
+  }
+  player.runSpeed=damp(player.runSpeed, spd, 8, dt);
+  player.runPhase+=dt*(4+spd*0.95);
+  if(player.onGround && spd>1.5 && Math.random()<spd*0.02) SFX.step();
+
+  /* ---- падение в пропасть ---- */
+  if(player.pos.y < world.killY){
+    startDeath();
+    return;
+  }
+
+  /* ---- состояние для анимации ---- */
+  if(player.rope) player.state='swing';
+  else if(player.climbing) player.state='climb';
+  else if(!player.onGround) player.state=(player.vel.y>0.6?'jump':'fall');
+  else if(spd>1.2) player.state='run';
+  else player.state='stand';
+
+  animateCharacter(player.object, {phase:player.runPhase, speed:clamp(spd/11,0.25,1.25),
+    state:player.state, dt:dt});
+  player.object.position.copy(player.pos);
+  player.object.rotation.z=damp(player.object.rotation.z,0,8,dt);
+  player.object.rotation.x=damp(player.object.rotation.x, player.state==='run'?0.06:0, 6, dt);
+  updateFacing(dt);
+
+  /* ---- позиция камеры: чуть выше при лазании ---- */
+  /* ---- чекпоинты ---- */
+  for(var i=0;i<world.checkpoints.length;i++){
+    var cp=world.checkpoints[i];
+    if(cp.taken) continue;
+    var dx=player.pos.x-cp.pos.x, dz=player.pos.z-cp.pos.z, dy=player.pos.y-cp.pos.y;
+    if(dx*dx+dz*dz<4.2 && Math.abs(dy)<3){
+      cp.taken=true;
+      S.cpIndex=Math.max(S.cpIndex, cp.index);
+      var c=pal.c;
+      cp.ring.material.color.set(c);
+      cp.glow.material.color.set(c);
+      spawnRing(cp.pos.x,cp.pos.y+0.2,cp.pos.z,c);
+      spawnBurst(cp.pos.x,cp.pos.y+1,cp.pos.z,c,16);
+      SFX.cp();
+      setHint('ЧЕКПОИНТ ВЗЯТ');
+      setTimeout(hideHint,1400);
+      S.score+=120;
+    }
+  }
+
+  /* ---- финиш ---- */
+  if(world.finish){
+    var f=world.finish;
+    var fx2=player.pos.x-f.pos.x, fz=player.pos.z-f.pos.z, fy=player.pos.y-f.pos.y;
+    if(fx2*fx2+fz*fz<6.5 && fy>-2 && fy<6){
+      levelComplete();
+    }
+  }
+
+  /* ---- бесконечный режим: достройка и дистанция ---- */
+  if(S.mode==='endless'){
+    var farthest=-player.pos.z;
+    if(farthest>S.distance) S.distance=farthest;
+    while(S.endlessZ > player.pos.z - 70){ extendEndless(); }
+  }
+
+  /* счёт за пройденное */
+  if(S.mode==='endless'){
+    S.score=Math.floor(S.distance*10) + S.cpIndex*150;
+  }
+}
+
+/* --------------------------- обнаружение стены ------------------------------ */
+var wallProbes=[
+  {dx:0, dz:-1, normal:new THREE.Vector3(0,0,1)},   // стена спереди (−Z)
+  {dx:0, dz: 1, normal:new THREE.Vector3(0,0,-1)},
+  {dx:-1,dz: 0, normal:new THREE.Vector3(1,0,0)},
+  {dx: 1,dz: 0, normal:new THREE.Vector3(-1,0,0)}
+];
+function detectWall(){
+  var probe=0.72, phy=0.55;
+  for(var i=0;i<wallProbes.length;i++){
+    var w=wallProbes[i];
+    var px=player.pos.x + w.dx*probe;
+    var pz=player.pos.z + w.dz*probe;
+    for(var j=0;j<world.platforms.length;j++){
+      var pl=world.platforms[j];
+      if(pl.hazard) continue;
+      var a=platformAABB(pl);
+      // проверяем высокий блок (годный для лазания)
+      if(a.maxY-a.minY < 1.6) continue;
+      if(px+hx()>a.minX && px-hx()<a.maxX &&
+         pz+hz()>a.minZ && pz-hz()<a.maxZ &&
+         player.pos.y+phy>a.minY && player.pos.y-phy<a.maxY){
+        return { normal:w.normal.clone(), plat:pl };
+      }
+    }
+  }
+  return null;
+}
+function hx(){ return player.hx; }
+function hz(){ return player.hz; }
+
+/* ------------------------------- КАНАТЫ в игре ------------------------------ */
+function tryGrabRope(){
+  var best=null, bestD=2.6;
+  for(var i=0;i<world.ropes.length;i++){
+    var r=world.ropes[i];
+    // расстояние именно до ВЕРЁВКИ (вертикальная линия от крюка вниз),
+    // а не до крюка
+    var dx=player.pos.x-r.anchor.x, dz=player.pos.z-r.anchor.z;
+    var horiz=Math.hypot(dx,dz);
+    var below=r.anchor.y - player.pos.y;
+    // игрок должен быть ниже крюка, в пределах длины каната
+    if(below<0.3 || below>r.len+0.6) continue;
+    // и не дальше вытянутой руки по горизонтали
+    if(horiz<bestD && horiz<1.9){ bestD=horiz; best=r; }
+  }
+  if(!best) return false;
+  player.rope=best;
+  var d2=player.pos.distanceTo(best.anchor);
+  best.curLen=clamp(d2, 2.0, best.len);
+  player.state='swing';
+  player.vel.multiplyScalar(0.35);
+  SFX.rope();
+  spawnRing(player.pos.x,player.pos.y,player.pos.z, world.pal.b);
+  setHint('РАСКАЧИВАЙСЯ: A/D · ПРЫЖОК — отпустить');
+  setTimeout(hideHint,2200);
+  return true;
+}
+function updateRopeSwing(dt){
+  var r=player.rope;
+  if(!r){ return; }
+  var len=r.curLen||r.len;
+  var pal=world.pal;
+
+  // гравитация
+  player.vel.y-=30*dt;
+  // подкачка качания от ввода (тангенциальная сила)
+  var fwd=new THREE.Vector3(-Math.sin(CAM.yaw),0,-Math.cos(CAM.yaw));
+  var right=new THREE.Vector3(Math.cos(CAM.yaw),0,-Math.sin(CAM.yaw));
+  var wish=new THREE.Vector3()
+    .addScaledVector(fwd, -input.moveZ)
+    .addScaledVector(right, input.moveX);
+  if(wish.lengthSq()>0.001){
+    wish.normalize();
+    // проекция на касательную к канату
+    var rad=new THREE.Vector3(player.pos.x-r.anchor.x, player.pos.y-r.anchor.y, player.pos.z-r.anchor.z);
+    var rl=rad.length()||1; rad.multiplyScalar(1/rl);
+    var tang=wish.clone().addScaledVector(rad, -wish.dot(rad));
+    player.vel.addScaledVector(tang, 17*dt);
+  }
+  // интегрируем
+  player.pos.addScaledVector(player.vel, dt);
+  // ограничение длины каната
+  var rad2=new THREE.Vector3(player.pos.x-r.anchor.x, player.pos.y-r.anchor.y, player.pos.z-r.anchor.z);
+  var rl2=rad2.length()||0.001;
+  rad2.multiplyScalar(1/rl2);
+  player.pos.set(r.anchor.x+rad2.x*len, r.anchor.y+rad2.y*len, r.anchor.z+rad2.z*len);
+  // убираем радиальную составляющую скорости
+  var radial=player.vel.dot(rad2);
+  player.vel.addScaledVector(rad2, -radial);
+
+  orientRope(r, player.pos);
+  player.object.position.copy(player.pos);
+  animateCharacter(player.object,{phase:0,speed:0,state:'swing',dt:dt});
+  player.object.rotation.y=Math.atan2(player.vel.x, player.vel.z)||player.facing;
+  player.facing=player.object.rotation.y;
+
+  if(player.vel.length()>11 && Math.random()<0.4){
+    spawnTrail(player.pos.x,player.pos.y,player.pos.z, pal.b);
+  }
+}
+function releaseRope(doJump){
+  var r=player.rope;
+  if(!r) return;
+  player.rope=null;
+  if(doJump){
+    /* прыжок с каната: усиливаем полёт вперёд и вверх */
+    var fwd=new THREE.Vector3(player.vel.x,0,player.vel.z);
+    if(fwd.lengthSq()<1){ fwd.set(-Math.sin(CAM.yaw),0,-Math.cos(CAM.yaw)).multiplyScalar(6); }
+    fwd.normalize().multiplyScalar(4.6);
+    player.vel.x+=fwd.x;
+    player.vel.z+=fwd.z;
+    player.vel.y=Math.max(player.vel.y+7.4, 7.4);
+    player.airJumps=1;
+  }
+  SFX.release();
+  spawnBurst(player.pos.x,player.pos.y,player.pos.z, world.pal.b, 14);
+  spawnRing(player.pos.x,player.pos.y,player.pos.z, world.pal.c);
+  setHint('');
+}
+
+/* ================================ HUD ======================================= */
+function setBanner(text, sub){
+  var b=el('banner');
+  b.textContent=text||'';
+  if(text) b.classList.add('on'); else b.classList.remove('on');
+}
+function setHint(text){
+  var h=el('hint');
+  h.textContent=text||'';
+  if(text) h.classList.add('on'); else h.classList.remove('on');
+}
+function hideHint(){ setHint(''); }
+function updateHud(){
+  el('stamFill').style.width=(player.stamina*100)+'%';
+  el('stamNum').textContent=Math.round(player.stamina*100);
+  el('stam').classList.toggle('low', player.stamina<0.3);
+
+  var spd=Math.hypot(player.vel.x,player.vel.z);
+  el('spdVal').textContent=Math.round(spd*3.6);
+  el('scoreVal').textContent=S.score;
+  el('cpVal').textContent=(S.cpIndex)+'/'+(S.cpTotal||0);
+
+  if(S.mode==='endless'){
+    el('lvlLabel').textContent='Дистанция';
+    el('lvlVal').textContent=Math.round(S.distance)+' м · ♥'+Math.max(0,S.endlessLives);
+    el('scoreLabel').textContent='Очки';
+  } else if(S.mode==='tutorial'){
+    el('lvlLabel').textContent='Обучение';
+    el('lvlVal').textContent=S.level+'/2';
+    el('scoreLabel').textContent='Очки';
+  } else {
+    el('lvlLabel').textContent='Уровень';
+    el('lvlVal').textContent=S.level+'/'+S.levelCount;
+    el('scoreLabel').textContent='Очки';
+  }
+}
+
+/* ============================== ЭКРАНЫ ====================================== */
+function showMenu(){
+  S.mode='menu';
+  el('hud').classList.remove('on');
+  setBanner(''); hideHint();
+  el('menu').style.display='flex';
+  var best='';
+  try{
+    var bd=localStorage.getItem('np_best_distance');
+    var bs=localStorage.getItem('np_best_score');
+    if(bd||bs){ best='<p style="color:#7fd7ff">Рекорд: '+(bs||0)+' очков · '+(bd||0)+' м</p>'; }
+  }catch(e){}
+  el('menu').innerHTML=
+    '<div class="card">'
+    +'<h1>НЕОН-ПАРКУР</h1>'
+    +'<p class="sub">Прыгай по неоновым платформам, бегай по стенам, качайся на канатах.<br>'
+    +'Провалился — прибегут индейцы, надают палками и закинут обратно на чекпоинт.</p>'
+    +'<h3>Выбери режим</h3>'
+    +'<div class="modes">'
+    +  '<div class="mode" data-m="tutorial"><div class="ic">🎓</div><b>Обучение</b>'
+    +    '<i>Два уровня: основы прыжков и лазание по стенам с канатом</i></div>'
+    +  '<div class="mode" data-m="campaign"><div class="ic">🏁</div><b>Кампания</b>'
+    +    '<i>'+S.levelCount+' уровней с финишем и растущей сложностью</i></div>'
+    +  '<div class="mode" data-m="endless"><div class="ic">♾️</div><b>Бесконечный</b>'
+    +    '<i>Уровни генерируются вечно, цель — пройти как можно дальше</i></div>'
+    +'</div>'
+    + best
+    +'<h3>Управление</h3>'
+    +'<div class="keys">'
+    +  '<div class="key"><b>W A S D</b> бежать</div>'
+    +  '<div class="key"><b>ПРОБЕЛ</b> прыжок (в воздухе — второй)</div>'
+    +  '<div class="key"><b>SHIFT</b> ускорение</div>'
+    +  '<div class="key"><b>E</b> схватиться за канат / отпустить</div>'
+    +  '<div class="key"><b>МЫШЬ</b> поворот камеры</div>'
+    +  '<div class="key"><b>ESC</b> пауза</div>'
+    +'</div>'
+    +'<p style="color:#7fd7ff;margin-top:14px">'
+    +'<b>Стены:</b> подбеги к высокой стене в прыжке и держи <b>W</b> — полезешь вверх. '
+    +'Полоска «Хват» не бесконечна. <b>ПРОБЕЛ</b> — оттолкнуться.<br>'
+    +'<b>Канаты:</b> подойди к канату и нажми <b>E</b>, раскачайся на <b>A/D</b>, '
+    +'<b>ПРОБЕЛ</b> — прыгнуть с разгона.</p>'
+    +'<button class="btn dim small" id="btnSound">ЗВУК: ВКЛ</button>'
+    +'</div>';
+
+  var ms=el('menu').querySelectorAll('.mode');
+  for(var i=0;i<ms.length;i++){
+    ms[i].onclick=function(){
+      var m=this.getAttribute('data-m');
+      actx();
+      if(m==='tutorial') startTutorial(1);
+      else if(m==='campaign') startCampaign();
+      else startEndless();
+    };
+  }
+  el('btnSound').onclick=function(){
+    S.sound=!S.sound;
+    this.textContent='ЗВУК: '+(S.sound?'ВКЛ':'ВЫКЛ');
+  };
+}
+function hideMenu(){ el('menu').style.display='none'; el('hud').classList.add('on'); }
+
+function showPause(){
+  S.prevMode=S.mode; S.mode='pause';
+  el('menu').style.display='flex';
+  el('menu').innerHTML=
+    '<div class="card">'
+    +'<h2>Пауза</h2>'
+    +'<p>'+(S.modeLabel||'')+'</p>'
+    +'<div class="stat"><div><div class="v">'+S.score+'</div><div class="k">очки</div></div>'
+    +(S.mode==='endless'?'<div><div class="v">'+Math.round(S.distance)+'</div><div class="k">метров</div></div>':'')
+    +'<div><div class="v">'+S.deaths+'</div><div class="k">падений</div></div></div>'
+    +'<button class="btn" id="pRes">ПРОДОЛЖИТЬ</button>'
+    +'<button class="btn gold small" id="pRestart">НАЧАТЬ УРОВЕНЬ ЗАНОВО</button>'
+    +'<button class="btn dim small" id="pMenu">В МЕНЮ</button>'
+    +'</div>';
+  el('pRes').onclick=function(){ hideMenu(); S.mode=S.prevMode; };
+  el('pRestart').onclick=function(){ hideMenu(); restartCurrent(); };
+  el('pMenu').onclick=showMenu;
+}
+
+function levelComplete(){
+  if(S.mode==='dead') return;
+  SFX.finish();
+  S.score+=500+Math.round(player.stamina*200);
+  if(S.mode==='tutorial' && S.level<2){
+    showTutorialDone();
+    return;
+  }
+  if(S.mode==='tutorial'){
+    showVictory('Обучение пройдено!','Теперь пробуй кампанию или бесконечный режим.');
+    return;
+  }
+  if(S.level>=S.levelCount){
+    showVictory('Кампания пройдена!','Все '+S.levelCount+' уровней позади.');
+    return;
+  }
+  showLevelDone();
+}
+function showLevelDone(){
+  S.mode='stall';
+  el('menu').style.display='flex';
+  el('menu').innerHTML=
+    '<div class="card">'
+    +'<h2>Уровень '+S.level+' пройден!</h2>'
+    +'<div class="stat">'
+    +'<div><div class="v">'+S.score+'</div><div class="k">очки</div></div>'
+    +'<div><div class="v">'+S.deaths+'</div><div class="k">падений</div></div>'
+    +'<div><div class="v">'+Math.round(S.time)+'с</div><div class="k">время</div></div>'
+    +'</div>'
+    +'<button class="btn" id="nNext">СЛЕДУЮЩИЙ УРОВЕНЬ →</button>'
+    +'<button class="btn dim small" id="nMenu">В МЕНЮ</button>'
+    +'</div>';
+  el('nNext').onclick=function(){ hideMenu(); startCampaign(S.level+1); };
+  el('nMenu').onclick=showMenu;
+}
+function showTutorialDone(){
+  S.mode='stall';
+  el('menu').style.display='flex';
+  el('menu').innerHTML=
+    '<div class="card">'
+    +'<h2>Обучение '+S.level+' пройдено!</h2>'
+    +'<p>'+(S.level===1
+      ? 'Ты научился бегать, прыгать и делать двойной прыжок.'
+      : 'Теперь ты умеешь лазать по стенам и качаться на канатах.')+'</p>'
+    +'<button class="btn" id="tNext">СЛЕДУЮЩЕЕ ЗАДАНИЕ →</button>'
+    +'<button class="btn gold small" id="tPlay">СРАЗУ В КАМПАНИЮ</button>'
+    +'<button class="btn dim small" id="tMenu">В МЕНЮ</button>'
+    +'</div>';
+  el('tNext').onclick=function(){ hideMenu(); startTutorial(S.level+1); };
+  el('tPlay').onclick=function(){ hideMenu(); startCampaign(1); };
+  el('tMenu').onclick=showMenu;
+}
+function showVictory(title,sub){
+  S.mode='stall';
+  saveBest();
+  el('menu').style.display='flex';
+  el('menu').innerHTML=
+    '<div class="card">'
+    +'<h2>'+title+'</h2>'
+    +'<p class="sub">'+sub+'</p>'
+    +'<div class="stat">'
+    +'<div><div class="v">'+S.score+'</div><div class="k">очки</div></div>'
+    +'<div><div class="v">'+S.deaths+'</div><div class="k">падений</div></div>'
+    +'</div>'
+    +'<div class="rank">'+rankByScore()+'</div>'
+    +'<button class="btn" id="vAgain">ИГРАТЬ СНОВА</button>'
+    +'<button class="btn dim small" id="vMenu">В МЕНЮ</button>'
+    +'</div>';
+  el('vAgain').onclick=function(){ hideMenu(); startCampaign(1); };
+  el('vMenu').onclick=showMenu;
+}
+function showEndlessOver(){
+  S.mode='stall';
+  saveBest();
+  el('menu').style.display='flex';
+  el('menu').innerHTML=
+    '<div class="card">'
+    +'<h2>Забег окончен</h2>'
+    +'<p class="sub">Ты пролетел '+Math.round(S.distance)+' метров и упал. Неплохо!</p>'
+    +'<div class="stat">'
+    +'<div><div class="v">'+S.score+'</div><div class="k">очки</div></div>'
+    +'<div><div class="v">'+Math.round(S.distance)+'</div><div class="k">метров</div></div>'
+    +'<div><div class="v">'+S.deaths+'</div><div class="k">падений</div></div>'
+    +'</div>'
+    +'<button class="btn" id="eAgain">ЕЩЁ ЗАБЕГ</button>'
+    +'<button class="btn dim small" id="eMenu">В МЕНЮ</button>'
+    +'</div>';
+  el('eAgain').onclick=function(){ hideMenu(); startEndless(); };
+  el('eMenu').onclick=showMenu;
+}
+function rankByScore(){
+  if(S.score>=4000) return 'ЛЕГЕНДА ПАРКУРА';
+  if(S.score>=2500) return 'Мастер неона';
+  if(S.score>=1400) return 'Ловкий кот';
+  return 'Новичок';
+}
+function saveBest(){
+  try{
+    var bs=parseInt(localStorage.getItem('np_best_score')||'0',10);
+    if(S.score>bs) localStorage.setItem('np_best_score', String(S.score));
+    var bd=parseInt(localStorage.getItem('np_best_distance')||'0',10);
+    if(S.distance>bd) localStorage.setItem('np_best_distance', String(Math.round(S.distance)));
+  }catch(e){}
+}
+
+/* ---- в бесконечном режиме 3 падения = конец забега ---- */
+var ENDLESS_LIVES=3;
+
+/* ============================ ЗАПУСК РЕЖИМОВ ================================ */
+function resetRun(){
+  S.score=0; S.deaths=0; S.cpIndex=0; S.cpTotal=0;
+  S.distance=0; S.time=0;
+  fx.trails.length=0; fx.particles.length=0; fx.rings.length=0;
+  clearIndians();
+  throwState=null;
+  player.rope=null;
+  player.vel.set(0,0,0);
+  player.object.rotation.set(0,0,0);
+  player.object.rotation.z=0;
+  GAME.shake=0;
+}
+/* ---- обучение: два рукотворных уровня ---- */
+function startTutorial(n){
+  hideMenu();
+  resetRun();
+  S.mode='tutorial'; S.level=n; S.modeLabel='Обучение '+n;
+  buildTutorial(n);
+  S.cpTotal=world.cpTotal; S.cpIndex=0;
+  respawnAtCheckpoint();
+  el('hud').classList.add('on');
+  setBanner('ОБУЧЕНИЕ '+n);
+  setTimeout(function(){ setBanner(''); }, 1600);
+}
+function buildTutorial(n){
+  clearWorld();
+  ensureWorld(n===1?0:4);
+  var pal=world.pal;
+  addPlatform(0,-0.5,0,8,1,8,pal.a);
+  world.startPos.set(0,1.6,0);
+  world.killY=-16;
+  var cp=addCheckpoint(0,0,0,0); cp.taken=true;
+  world.cpIndex=0;
+
+  if(n===1){
+    // ОСНОВЫ: ровный бег, прыжок, двойной прыжок, финиш
+    // все разрывы специально проходимы: обычный прыжок ~6.8, с двойным ~9.7
+    var z=-4;
+    addPlatform(0,-0.5,z-4,8,1,8,pal.a); z-=8;                 // старт-бег
+    addPlatform(0,-0.5,z-3,6,1,6,pal.b); z-=6;                 // готовься
+    z-=4.0; addPlatform(0,-0.5,z-4,8,1,8,pal.a); z-=8;         // ПРОПАСТЬ 4.0 — обычный прыжок
+    z-=5.5; addPlatform(0,-0.5,z-4,8,1,8,pal.c); z-=8;         // ПРОПАСТЬ 5.5 — двойной прыжок
+    addCheckpoint(0,0,z+4,world.checkpoints.length);
+    z-=3.5; addPlatform(0,-0.5,z-5,10,1,10,pal.a); z-=10;      // финишная
+    addFinish(0,0,z+5);
+    world.tutHints=[
+      {z:0, text:'W A S D — БЕГИ ВПЕРЁД'},
+      {z:-14, text:'ПРОБЕЛ — ПРЫЖОК'},
+      {z:-30, text:'В ВОЗДУХЕ ПРОБЕЛ ЕЩЁ РАЗ — ДВОЙНОЙ ПРЫЖОК'},
+      {z:-52, text:'ДОБЕГИ ДО ФИНИША'}
+    ];
+  } else {
+    // СТЕНЫ И КАНАТ
+    var z=-4;
+    addPlatform(0,-0.5,z-3,7,1,7,pal.a); z-=6;
+    addCheckpoint(0,0,z+3,world.checkpoints.length);
+    /* разбег перед стеной */
+    addPlatform(0,-0.5,z-4.5,9,1,9,pal.b);
+    var runFar = z-9;                 // дальний край разбега
+    z = runFar;
+    /* СТЕНА вплотную к краю разбега */
+    var wallH=5.5, wallDepth=1.6;
+    var wallZ = z - wallDepth/2;
+    addPlatform(0, wallH/2-0.5, wallZ, 8, wallH, wallDepth, pal.c);
+    /* верхняя площадка стык в стык со стеной */
+    var topNear = wallZ - wallDepth/2;
+    var topDepth = 9;
+    var topZ = topNear - topDepth/2;
+    addPlatform(0, wallH-0.5, topZ, 9, 1, topDepth, pal.a);
+    z = topNear - topDepth;
+    addCheckpoint(0, wallH, z + topDepth*0.5, world.checkpoints.length);
+    /* приземление перед канатом */
+    addPlatform(0,-0.5, z-4.5, 9, 1, 9, pal.b);
+    var ropeRunFar = z - 9;
+    z = ropeRunFar;
+    /* КАНАТ через пропасть: ~9.5 м — с канатом проходимо, без него нет */
+    var span=9.5;
+    var anchorZ = z - 3.2;
+    addRope(0, 6.6, anchorZ, 5.9, pal.c);
+    z -= span;
+    addPlatform(0,-0.5, z-4.5, 9, 1, 9, pal.a); z-=9;
+    addPlatform(0,-0.5, z-5.5, 11, 1, 11, pal.b); z-=11;
+    addFinish(0,0, z+5.5);
+    world.tutHints=[
+      {z:0, text:'ВПЕРЕДИ СТЕНА — ПОДБЕГИ, ПРЫГНИ К НЕЙ И ДЕРЖИ W'},
+      {z:-16, text:'НА СТЕНЕ: W — ВВЕРХ, ПРОБЕЛ — ОТТОЛКНУТЬСЯ'},
+      {z:-32, text:'ДО КАНАТА: ЖМИ E ЧТОБЫ СХВАТИТЬСЯ'},
+      {z:-44, text:'РАСКАЧИВАЙСЯ НА A/D, ПОТОМ ПРОБЕЛ — ПРЫЖОК'}
+    ];
+  }
+  world.tutHintIndex=0;
+}
+function updateTutorialHints(){
+  if(!world.tutHints) return;
+  var i=world.tutHintIndex|0;
+  if(i>=world.tutHints.length) return;
+  if(player.pos.z < world.tutHints[i].z){
+    setHint(world.tutHints[i].text);
+    setTimeout(hideHint, 3200);
+    world.tutHintIndex=i+1;
+  }
+}
+/* ---- кампания ---- */
+function startCampaign(level){
+  hideMenu();
+  resetRun();
+  level=level||1;
+  S.mode='campaign'; S.level=level; S.modeLabel='Уровень '+level;
+  var seed = 7000 + level*137;
+  buildLevel('campaign', seed, level, segDifficulty('campaign', level, 0));
+  S.cpTotal=world.cpTotal; S.cpIndex=0;
+  respawnAtCheckpoint();
+  el('hud').classList.add('on');
+  setBanner('УРОВЕНЬ '+level);
+  setTimeout(function(){ setBanner(''); }, 1700);
+}
+/* ---- бесконечный ---- */
+function startEndless(){
+  hideMenu();
+  resetRun();
+  S.mode='endless'; S.modeLabel='Бесконечный';
+  var seed=(Date.now()%100000);
+  buildLevel('endless', seed, 1, 0.15);
+  S.endlessRng=mulberry32(seed+77777);
+  /* продолжаем ровно с того места, где закончился стартовый кусок */
+  S.endlessZ=world.lastSegZ!==undefined ? world.lastSegZ : (world.startPos.z-40);
+  S.endlessSeg=0;
+  S.endlessLives=ENDLESS_LIVES;
+  S.cpTotal=world.cpTotal; S.cpIndex=0;
+  respawnAtCheckpoint();
+  el('hud').classList.add('on');
+  setBanner('БЕСКОНЕЧНЫЙ ЗАБЕГ');
+  setTimeout(function(){ setBanner(''); }, 1700);
+}
+function restartCurrent(){
+  if(S.mode==='tutorial') startTutorial(S.level);
+  else if(S.mode==='endless') startEndless();
+  else startCampaign(S.level);
+}
+
+/* ---- показываем, что осталось жизней в бесконечном режиме ---- */
+function endlessLivesLeft(){
+  return (S.mode==='endless')? S.endlessLives : null;
+}
+
+/* ============================== ВВОД: КЛАВИАТУРА ============================ */
+document.addEventListener('keydown',function(e){
+  var k=keyCode(e);
+  if(k==='escape'){
+    if(S.mode==='pause'){ hideMenu(); S.mode=S.prevMode; }
+    else if(S.mode==='tutorial'||S.mode==='campaign'||S.mode==='endless'){ showPause(); }
+    return;
+  }
+  if(['space','up','down','left','right'].indexOf(k)>=0) e.preventDefault();
+  keys[k]=true;
+  if(k==='space'){ input.jumpPressed=true; input.jump=true; }
+  if(k==='e'){ input.usePressed=true; input.use=true; }
+},false);
+document.addEventListener('keyup',function(e){
+  var k=keyCode(e);
+  keys[k]=false;
+  if(k==='space') input.jump=false;
+  if(k==='e') input.use=false;
+},false);
+
+/* --------------------------- мышь + pointer lock ---------------------------- */
+canvas.addEventListener('click',function(){
+  if(S.mode==='tutorial'||S.mode==='campaign'||S.mode==='endless'){
+    if(document.pointerLockElement!==canvas && canvas.requestPointerLock){
+      canvas.requestPointerLock();
+    }
+  }
+});
+document.addEventListener('pointerlockchange',function(){
+  document.body.classList.toggle('locked', document.pointerLockElement===canvas);
+});
+document.addEventListener('mousemove',function(e){
+  if(document.pointerLockElement!==canvas) return;
+  CAM.yaw -= e.movementX*0.0026;
+  CAM.pitch = clamp(CAM.pitch - e.movementY*0.0022, -0.9, 0.8);
+});
+/* без pointer lock (файл:// или отказ) — вращаем при зажатой мыши */
+var dragging=false, lastMX=0, lastMY=0;
+canvas.addEventListener('mousedown',function(e){ dragging=true; lastMX=e.clientX; lastMY=e.clientY; });
+window.addEventListener('mouseup',function(){ dragging=false; });
+window.addEventListener('mousemove',function(e){
+  if(!dragging || document.pointerLockElement===canvas) return;
+  CAM.yaw -= (e.clientX-lastMX)*0.005;
+  CAM.pitch = clamp(CAM.pitch-(e.clientY-lastMY)*0.004, -0.9, 0.8);
+  lastMX=e.clientX; lastMY=e.clientY;
+});
+
+/* ------------------------------- тач-управление ----------------------------- */
+function initTouch(){
+  if(!('ontouchstart' in window) && !navigator.maxTouchPoints) return;
+  var t=el('touch'); t.classList.add('on');
+  var stick=document.createElement('div');
+  stick.className='tbtn';
+  stick.style.cssText='width:120px;height:120px;left:18px;bottom:22px;border-radius:50%;';
+  t.appendChild(stick);
+  var knob=document.createElement('div');
+  knob.style.cssText='position:absolute;width:52px;height:52px;border-radius:50%;background:rgba(120,200,255,.35);left:34px;top:34px;';
+  stick.appendChild(knob);
+  var touchId=null, cx=0, cy=0;
+
+  function start(e){
+    e.preventDefault();
+    var tt=e.changedTouches?e.changedTouches[0]:e;
+    var r=stick.getBoundingClientRect();
+    cx=r.left+r.width/2; cy=r.top+r.height/2;
+    touchId=(tt.identifier!==undefined)?tt.identifier:'m';
+    move(tt);
+  }
+  function move(e){
+    var tt=null;
+    if(e.changedTouches){
+      for(var i=0;i<e.changedTouches.length;i++) if(e.changedTouches[i].identifier===touchId) tt=e.changedTouches[i];
+    } else tt=e;
+    if(!tt) return;
+    var dx=tt.clientX-cx, dy=tt.clientY-cy;
+    var len=Math.hypot(dx,dy)||1;
+    var max=44;
+    var cl=Math.min(len,max);
+    knob.style.left=(34+dx/len*cl)+'px';
+    knob.style.top=(34+dy/len*cl)+'px';
+    input.moveX=clamp(dx/max,-1,1);
+    input.moveZ=clamp(dy/max,-1,1);
+  }
+  function end(e){
+    if(e.changedTouches){
+      var found=false;
+      for(var i=0;i<e.changedTouches.length;i++) if(e.changedTouches[i].identifier===touchId) found=true;
+      if(!found) return;
+    }
+    touchId=null;
+    input.moveX=0; input.moveZ=0;
+    knob.style.left='34px'; knob.style.top='34px';
+  }
+  stick.addEventListener('touchstart',start,{passive:false});
+  stick.addEventListener('touchmove',move,{passive:false});
+  stick.addEventListener('touchend',end,{passive:false});
+  stick.addEventListener('touchcancel',end,{passive:false});
+
+  // кнопки
+  function btn(label,x,bottom,w,fn){
+    var b=document.createElement('div');
+    b.className='tbtn'; b.textContent=label;
+    b.style.cssText='width:'+w+'px;height:'+w+'px;right:'+x+'px;bottom:'+bottom+'px;font-size:12px;';
+    b.addEventListener('touchstart',function(e){ e.preventDefault(); fn(); },{passive:false});
+    t.appendChild(b);
+  }
+  btn('ПРЫЖ',18,110,74,function(){ input.jumpPressed=true; });
+  btn('РЫВОК',100,40,64,function(){ input.sprint=true; setTimeout(function(){ input.sprint=false; },600); });
+  btn('КАНАТ',100,116,64,function(){ input.usePressed=true; });
+
+  // поворот камеры свайпом по правой половине
+  var lookId=null, lx=0, ly=0;
+  canvas.addEventListener('touchstart',function(e){
+    for(var i=0;i<e.changedTouches.length;i++){
+      var tt=e.changedTouches[i];
+      if(tt.clientX>window.innerWidth*0.40){ lookId=tt.identifier; lx=tt.clientX; ly=tt.clientY; }
+    }
+  },{passive:true});
+  canvas.addEventListener('touchmove',function(e){
+    for(var i=0;i<e.changedTouches.length;i++){
+      var tt=e.changedTouches[i];
+      if(tt.identifier===lookId){
+        CAM.yaw-=(tt.clientX-lx)*0.006;
+        CAM.pitch=clamp(CAM.pitch-(tt.clientY-ly)*0.005,-0.9,0.8);
+        lx=tt.clientX; ly=tt.clientY;
+      }
+    }
+  },{passive:true});
+  canvas.addEventListener('touchend',function(){ lookId=null; },{passive:true});
+}
+
+/* ============================== ИГРОВОЙ ЦИКЛ ================================ */
+var last=0;
+
+function computeInput(){
+  var x=0,z=0;
+  if(keys['a']||keys['left']) x-=1;
+  if(keys['d']||keys['right']) x+=1;
+  if(keys['w']||keys['up']) z-=1;
+  if(keys['s']||keys['down']) z+=1;
+  // объединяем с тачем
+  if(Math.abs(input.moveX)>0.05||Math.abs(input.moveZ)>0.05){
+    x=input.moveX; z=input.moveZ;
+  }
+  input.moveX=x; input.moveZ=z;
+  input.sprint=!!(keys['shift']);
+  if(input.jump && !keys['space']){ /* nothing */ }
+}
+
+function step(dt){
+  GAME.time=(GAME.time||0)+dt;
+  S.time+=dt;
+  GAME.shake=Math.max(0,GAME.shake-dt*2.2);
+
+  var playing=(S.mode==='tutorial'||S.mode==='campaign'||S.mode==='endless');
+  if(playing){
+    computeInput();
+    // обновляем движущиеся платформы
+    for(var i=0;i<world.platforms.length;i++){
+      var p=world.platforms[i];
+      if(!p.moving) continue;
+      var mv=p.moving;
+      var off=Math.sin(GAME.time*mv.speed+mv.phase)*mv.amp;
+      if(mv.axis==='x') p.mesh.position.x=p.base.x+off;
+      else if(mv.axis==='y') p.mesh.position.y=p.base.y+(mv.y||0)+off;
+      else p.mesh.position.z=p.base.z+off;
+      if(p.glow) p.glow.position.set(p.mesh.position.x, p.mesh.position.y+p.hy+0.2, p.mesh.position.z);
+    }
+    // медленное вращение колец чекпоинтов и финиша
+    for(var c=0;c<world.checkpoints.length;c++){
+      var cp=world.checkpoints[c];
+      cp.ring.rotation.z+=dt*0.7;
+      cp.ring.position.y=cp.pos.y+1.6+Math.sin(GAME.time*2+c)*0.12;
+    }
+    if(world.finish){
+      world.finish.ring.rotation.z+=dt*0.6;
+      world.finish.mesh.rotation.y+=dt*0.3;
+    }
+    updatePlayer(dt);
+    updateFx(dt);
+    if(S.mode==='tutorial') updateTutorialHints();
+    updateHud();
+  } else {
+    // в меню/паузе — плавный облёт камеры
+    updateFx(dt);
+    if(world.finish){ world.finish.mesh.rotation.y+=dt*0.3; }
+    for(var c2=0;c2<world.checkpoints.length;c2++) world.checkpoints[c2].ring.rotation.z+=dt*0.7;
+  }
+
+  // тряска камеры
+  updateCamera(dt);
+  if(GAME.shake>0){
+    camera.position.x+=rnd(-GAME.shake,GAME.shake);
+    camera.position.y+=rnd(-GAME.shake,GAME.shake);
+    camera.position.z+=rnd(-GAME.shake,GAME.shake);
+  }
+
+  // проверка падения в бесконечном режиме после возрождения
+  updateHud();
+}
+
+function loop(ts){
+  if(!last) last=ts;
+  var dt=(ts-last)/1000; last=ts;
+  if(dt>0.05) dt=0.05;
+  step(dt);
+  renderer.render(scene,camera);
+  requestAnimationFrame(loop);
+}
+
+/* ============================== СТАРТ ======================================= */
+initThree();
+initPlayer();
+initTouch();
+applyPalette(PALETTES[0]);
+/* стартовая сцена для меню */
+buildLevel('campaign', 999, 1, 0.2);
+respawnAtCheckpoint();
+player.pos.set(0,3,10); player.object.position.copy(player.pos);
+CAM.yaw=Math.PI; CAM.dist=9;
+showMenu();
+requestAnimationFrame(loop);
+
+/* --------------------------- отладочный доступ ------------------------------ */
+if(location.hash==='#debug'){
+  window.__G={
+    S:S, player:player, world:world, CAM:CAM, GAME:GAME,
+    startTutorial:startTutorial, startCampaign:startCampaign, startEndless:startEndless,
+    step:step, buildLevel:buildLevel, buildTutorial:buildTutorial,
+    startDeath:startDeath, spawnIndians:spawnIndians, clearIndians:clearIndians,
+    indians:indians, respawn:function(){ respawnAtCheckpoint(); },
+    keys:keys, input:input, setKey:function(k,v){ keys[k]=v; },
+    press:function(k){ if(k==='space'){ input.jumpPressed=true; input.jump=true; } if(k==='e'){ input.usePressed=true; } },
+    release:function(k){ if(k==='space') input.jump=false; },
+    playerPos:function(){ return player.pos.toArray().map(function(v){return +v.toFixed(2);}); },
+    platformCount:function(){ return world.platforms.length; },
+    ropeCount:function(){ return world.ropes.length; },
+    cpCount:function(){ return world.checkpoints.length; },
+    finishInfo:function(){ return world.finish? world.finish.pos.toArray().map(function(v){return +v.toFixed(2);}) : null; },
+    grabRope:tryGrabRope, releaseRope:releaseRope
+  };
+}
+
+})();
+</script>
+</body>
+</html>
