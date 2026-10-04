@@ -1,0 +1,2110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Академия химических тайн</title>
+<style>
+  :root{
+    --cream:#fff6e8; --ink:#2e2438; --ink2:#5b4d6b;
+    --gold:#ffc857; --gold2:#ffb02e; --mint:#5fd4a8; --blue:#5aa9e6;
+    --pink:#ff8fb1; --plum:#6b4a8a; --paper:#fffdf7;
+    --shadow:0 6px 0 rgba(46,36,56,.18), 0 14px 34px rgba(46,36,56,.22);
+    --ui-scale:1;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ width:100%; height:100%; overflow:hidden; background:#241d2e; }
+  body{
+    font-family:"Segoe UI",Roboto,"Trebuchet MS",Arial,sans-serif;
+    color:var(--ink); user-select:none; -webkit-tap-highlight-color:transparent;
+  }
+  #game{ display:block; width:100%; height:100%; }
+  body.locked{ cursor:none; }
+
+  /* ---------- общий слой интерфейса ---------- */
+  #ui{ position:fixed; inset:0; pointer-events:none; font-size:calc(16px * var(--ui-scale)); }
+  #ui > *{ pointer-events:auto; }
+  .hidden{ display:none !important; }
+
+  /* ---------- рамка-винетка для «мультфильма» ---------- */
+  #vignette{
+    position:fixed; inset:0; pointer-events:none; z-index:5;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 52%, rgba(24,16,34,.4) 100%);
+  }
+  body.reduced #vignette{ display:none; }
+
+  /* ---------- HUD ---------- */
+  #hud{
+    position:fixed; inset:0; pointer-events:none; z-index:8;
+    padding:calc(14px * var(--ui-scale));
+    display:flex; flex-direction:column; justify-content:space-between;
+    opacity:0; transition:opacity .35s;
+  }
+  #hud.on{ opacity:1; }
+  .hud-row{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+
+  .panel{
+    background:rgba(255,253,247,.93); border:3px solid var(--ink); border-radius:16px;
+    padding:calc(9px * var(--ui-scale)) calc(15px * var(--ui-scale));
+    box-shadow:var(--shadow); backdrop-filter:blur(6px);
+  }
+  .panel .lbl{
+    font-size:.66em; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--ink2); font-weight:800;
+  }
+  .panel .val{ font-size:1.5em; font-weight:900; line-height:1.05; font-variant-numeric:tabular-nums; }
+  .panel.gold{ background:linear-gradient(180deg,#fff3d0,#ffe6a8); }
+  .panel.mint{ background:linear-gradient(180deg,#dff8ee,#c3f0dd); }
+
+  #objective{ max-width:min(420px,52vw); }
+  #objective .val{ font-size:1em; font-weight:800; line-height:1.35; }
+
+  /* подсказка взаимодействия */
+  #prompt{
+    position:absolute; left:50%; bottom:16%;
+    transform:translateX(-50%);
+    background:rgba(46,36,56,.92); color:#fff;
+    border-radius:14px; padding:calc(9px*var(--ui-scale)) calc(16px*var(--ui-scale));
+    font-weight:800; font-size:1em; white-space:nowrap;
+    box-shadow:0 8px 24px rgba(0,0,0,.35);
+    opacity:0; transition:opacity .2s;
+  }
+  #prompt.on{ opacity:1; }
+  #prompt b{ color:var(--gold); }
+
+  #toast{
+    position:absolute; left:50%; top:16%; transform:translate(-50%,-50%);
+    background:rgba(255,253,247,.96); border:3px solid var(--ink); border-radius:14px;
+    padding:calc(8px*var(--ui-scale)) calc(18px*var(--ui-scale));
+    font-weight:800; font-size:1em; box-shadow:var(--shadow);
+    opacity:0; transition:opacity .25s; max-width:80vw; text-align:center;
+  }
+  #toast.on{ opacity:1; }
+
+  /* субтитры */
+  #subtitles{
+    position:absolute; left:50%; bottom:7%; transform:translateX(-50%);
+    width:min(760px,88vw); text-align:center;
+    opacity:0; transition:opacity .2s;
+  }
+  #subtitles.on{ opacity:1; }
+  #subtitles .who{
+    display:inline-block; background:var(--gold); color:var(--ink);
+    border:3px solid var(--ink); border-radius:11px; padding:1px 12px;
+    font-weight:900; font-size:.85em; margin-bottom:6px;
+  }
+  #subtitles .what{
+    background:rgba(46,36,56,.93); color:#fff; border-radius:14px;
+    padding:calc(8px*var(--ui-scale)) calc(16px*var(--ui-scale));
+    font-size:1em; line-height:1.5; font-weight:600; display:inline-block;
+  }
+
+  /* ---------- модальные окна ---------- */
+  .modal{
+    position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at 50% 35%, rgba(70,50,100,.62), rgba(24,16,34,.92));
+    padding:20px; overflow-y:auto;
+  }
+  .sheet{
+    width:min(820px,94vw); max-height:92vh; overflow-y:auto;
+    background:linear-gradient(180deg,#fffdf7,#fff2dd);
+    border:4px solid var(--ink); border-radius:26px;
+    padding:calc(22px*var(--ui-scale)) calc(26px*var(--ui-scale));
+    box-shadow:0 18px 0 rgba(46,36,56,.2), 0 30px 70px rgba(0,0,0,.4);
+    text-align:center;
+  }
+  .sheet::-webkit-scrollbar{ width:10px; }
+  .sheet::-webkit-scrollbar-thumb{ background:#d9c9b4; border-radius:5px; }
+
+  h1{
+    font-size:clamp(26px,4.6vw,50px); font-weight:900; letter-spacing:.02em; line-height:1.1;
+    color:var(--ink);
+    text-shadow:0 3px 0 #fff, 0 6px 0 rgba(46,36,56,.12);
+  }
+  h1 .accent{ color:var(--gold2); }
+  .subtitle{ font-size:1em; color:var(--ink2); font-weight:700; margin-top:8px; line-height:1.55; }
+  h2{ font-size:clamp(19px,3vw,28px); font-weight:900; margin-bottom:8px; }
+  h3{
+    font-size:.78em; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--plum); font-weight:900; margin:calc(16px*var(--ui-scale)) 0 8px;
+    text-align:left;
+  }
+  p{ font-size:1em; line-height:1.62; color:var(--ink2); margin:7px 0; }
+
+  .btn{
+    font-family:inherit; font-size:1em; font-weight:900;
+    padding:calc(12px*var(--ui-scale)) calc(24px*var(--ui-scale));
+    margin:5px; border:3px solid var(--ink); border-radius:16px; cursor:pointer;
+    color:var(--ink); background:linear-gradient(180deg,#ffe9a8,#ffc857);
+    box-shadow:0 6px 0 #c8922a, 0 12px 24px rgba(0,0,0,.22);
+    transition:transform .08s, box-shadow .08s, filter .12s;
+  }
+  .btn:hover{ filter:brightness(1.06); }
+  .btn:active{ transform:translateY(5px); box-shadow:0 1px 0 #c8922a; }
+  .btn.blue{ background:linear-gradient(180deg,#b8e2ff,#7cc3f0); box-shadow:0 6px 0 #3f7ea8, 0 12px 24px rgba(0,0,0,.22); }
+  .btn.blue:active{ box-shadow:0 1px 0 #3f7ea8; }
+  .btn.mint{ background:linear-gradient(180deg,#ccf7e6,#8fe3c2); box-shadow:0 6px 0 #3f9a76, 0 12px 24px rgba(0,0,0,.22); }
+  .btn.mint:active{ box-shadow:0 1px 0 #3f9a76; }
+  .btn.ghost{ background:linear-gradient(180deg,#fff,#f0e6d8); box-shadow:0 6px 0 #cbb8a2, 0 12px 24px rgba(0,0,0,.18); }
+  .btn.ghost:active{ box-shadow:0 1px 0 #cbb8a2; }
+  .btn.small{ font-size:.85em; padding:calc(8px*var(--ui-scale)) calc(14px*var(--ui-scale)); border-radius:12px; box-shadow:0 4px 0 #c8922a; }
+  .btn:disabled{ opacity:.5; cursor:default; filter:grayscale(.3); }
+
+  .modes{ display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); margin:14px 0 4px; }
+  .mode{
+    background:linear-gradient(180deg,#fff,#fdf3e2); border:3px solid var(--ink);
+    border-radius:18px; padding:calc(15px*var(--ui-scale)); cursor:pointer; text-align:left;
+    box-shadow:0 6px 0 rgba(46,36,56,.14); transition:transform .12s, box-shadow .12s;
+  }
+  .mode:hover{ transform:translateY(-4px); box-shadow:0 10px 0 rgba(46,36,56,.16), 0 16px 30px rgba(0,0,0,.2); }
+  .mode .ic{ font-size:1.9em; line-height:1; margin-bottom:6px; }
+  .mode b{ display:block; font-size:1.05em; margin-bottom:4px; }
+  .mode i{ font-style:normal; font-size:.88em; color:var(--ink2); line-height:1.45; display:block; }
+  .mode.locked{ opacity:.62; cursor:default; }
+
+  .keys{ display:grid; gap:8px; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin:10px 0; text-align:left; }
+  .key{
+    background:#fffdf7; border:3px solid var(--ink); border-radius:12px;
+    padding:8px 12px; font-size:.9em; font-weight:700; display:flex; align-items:center; gap:9px;
+  }
+  .key b{
+    background:var(--ink); color:#fff; border-radius:7px; padding:2px 9px;
+    font-size:.86em; font-weight:900; white-space:nowrap;
+  }
+
+  /* задания */
+  .task-head{ text-align:left; border-bottom:3px dashed #e3d5c2; padding-bottom:10px; margin-bottom:12px; }
+  .task-goal{ font-size:.82em; font-weight:800; color:var(--plum); letter-spacing:.06em; }
+  .task-title{ font-size:1.3em; font-weight:900; margin:2px 0 6px; }
+  .task-prompt{ font-size:1em; line-height:1.55; color:var(--ink); font-weight:600; }
+
+  .options{ display:grid; gap:9px; margin:14px 0; text-align:left; }
+  .opt{
+    display:flex; align-items:flex-start; gap:11px;
+    background:#fff; border:3px solid var(--ink); border-radius:14px;
+    padding:calc(11px*var(--ui-scale)) calc(14px*var(--ui-scale)); cursor:pointer;
+    font-size:.98em; font-weight:700; line-height:1.45;
+    box-shadow:0 4px 0 rgba(46,36,56,.12); transition:transform .1s, box-shadow .1s, background .15s;
+  }
+  .opt:hover{ transform:translateY(-2px); }
+  .opt .tick{
+    flex:0 0 auto; width:1.5em; height:1.5em; border:3px solid var(--ink); border-radius:7px;
+    display:flex; align-items:center; justify-content:center; font-weight:900; font-size:.9em;
+    background:#fffdf7; color:transparent;
+  }
+  .opt.sel{ background:#e9f7ff; }
+  .opt.sel .tick{ background:var(--blue); color:#fff; }
+  .opt.ok{ background:#e2f8ee; }
+  .opt.ok .tick{ background:var(--mint); color:#fff; }
+  .opt.bad{ background:#ffe9ee; }
+  .opt.bad .tick{ background:var(--pink); color:#fff; }
+
+  .classify-wrap{ display:grid; gap:12px; margin:12px 0; }
+  .bins{ display:grid; gap:10px; grid-template-columns:1fr 1fr; }
+  .bin{
+    border:3px dashed #cbb8a2; border-radius:14px; padding:10px; min-height:86px;
+    background:#fffdf7; text-align:left;
+  }
+  .bin h4{ font-size:.82em; letter-spacing:.1em; text-transform:uppercase; color:var(--plum); margin-bottom:7px; }
+  .bin .placed{ display:flex; flex-wrap:wrap; gap:6px; }
+  .pool{ display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+  .chip{
+    background:#fff; border:3px solid var(--ink); border-radius:999px;
+    padding:7px 15px; font-weight:800; font-size:.92em; cursor:pointer;
+    box-shadow:0 4px 0 rgba(46,36,56,.12);
+  }
+  .chip:hover{ transform:translateY(-2px); }
+  .chip.inbin{ background:#eef7ff; cursor:pointer; }
+  .chip.ok{ background:#e2f8ee; }
+  .chip.bad{ background:#ffe9ee; }
+
+  .match-wrap{ display:grid; gap:9px; }
+  .match-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:center; }
+  .match-left{
+    background:#fff; border:3px solid var(--ink); border-radius:12px; padding:10px 13px;
+    font-weight:800; text-align:left;
+  }
+  .match-sel{
+    background:#fff; border:3px solid var(--ink); border-radius:12px; padding:8px 10px;
+    font-family:inherit; font-size:.94em; font-weight:700; cursor:pointer; width:100%;
+  }
+
+  .feedback{
+    border:3px solid var(--ink); border-radius:16px; padding:14px;
+    margin:12px 0; text-align:left; font-size:.97em; line-height:1.6;
+  }
+  .feedback.ok{ background:#e2f8ee; }
+  .feedback.bad{ background:#fff1f4; }
+  .feedback .ttl{ font-weight:900; margin-bottom:6px; font-size:1.05em; }
+  .feedback ul{ margin:6px 0 0 18px; }
+  .feedback li{ margin:3px 0; }
+
+  .hintbox{
+    background:#fff9e3; border:3px solid var(--gold2); border-radius:14px;
+    padding:12px; margin:10px 0; text-align:left; font-size:.95em; line-height:1.55;
+  }
+  .hintbox .ttl{ font-weight:900; color:#a8741a; margin-bottom:4px; }
+
+  .tabs{ display:flex; gap:7px; flex-wrap:wrap; justify-content:center; margin:8px 0 14px; }
+  .tab{
+    font-family:inherit; font-size:.86em; font-weight:900; padding:8px 15px;
+    border:3px solid var(--ink); border-radius:12px; cursor:pointer;
+    background:#fffdf7; color:var(--ink); box-shadow:0 4px 0 rgba(46,36,56,.12);
+  }
+  .tab.on{ background:linear-gradient(180deg,#ffe9a8,#ffc857); }
+
+  .journal-list{ text-align:left; display:grid; gap:9px; }
+  .jitem{
+    background:#fff; border:3px solid var(--ink); border-radius:13px; padding:11px 14px;
+    font-size:.95em; line-height:1.5;
+  }
+  .jitem b{ display:block; margin-bottom:3px; }
+  .jitem .tag{
+    display:inline-block; background:#f0e6d8; border-radius:7px; padding:1px 8px;
+    font-size:.8em; font-weight:800; color:var(--plum); margin-right:5px;
+  }
+  .jitem.found{ background:#eefbf4; border-color:#3f9a76; }
+
+  /* периодическая таблица */
+  .ptable{ display:grid; gap:5px; margin:10px 0; overflow-x:auto; padding-bottom:6px; }
+  .ptable-inner{ display:grid; grid-template-columns:repeat(18,minmax(34px,1fr)); gap:4px; min-width:640px; }
+  .cell{
+    aspect-ratio:1; border:3px solid var(--ink); border-radius:9px; background:#fff;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    cursor:pointer; font-weight:900; font-size:.78em; line-height:1.05; padding:2px;
+    transition:transform .1s, background .15s;
+  }
+  .cell:hover{ transform:scale(1.08); }
+  .cell .n{ font-size:.68em; color:var(--ink2); font-weight:700; }
+  .cell.metal{ background:#ffeccd; }
+  .cell.nonmetal{ background:#dff3ff; }
+  .cell.noble{ background:#f0e2ff; }
+  .cell.known{ box-shadow:0 0 0 3px var(--mint) inset; }
+  .cell.empty{ border-style:dashed; background:transparent; cursor:default; }
+
+  .elcard{
+    background:#fff; border:3px solid var(--ink); border-radius:16px; padding:16px;
+    margin:12px 0; text-align:left;
+  }
+  .elcard .bigsym{
+    font-size:2.6em; font-weight:900; color:var(--gold2); line-height:1;
+  }
+  .elcard .row{ display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px dashed #e3d5c2; font-size:.95em; }
+  .elcard .row:last-child{ border:none; }
+  .elcard .row span:first-child{ color:var(--ink2); font-weight:700; }
+
+  .stat{ display:flex; gap:22px; justify-content:center; flex-wrap:wrap; margin:14px 0; }
+  .stat > div{ text-align:center; }
+  .stat .v{ font-size:1.9em; font-weight:900; color:var(--gold2); }
+  .stat .k{ font-size:.74em; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2); font-weight:800; }
+
+  .rank{ font-size:clamp(19px,3.4vw,30px); font-weight:900; color:var(--gold2); margin:12px 0 4px; }
+
+  /* настройки */
+  .setting{ display:flex; align-items:center; justify-content:space-between; gap:14px; padding:11px 0; border-bottom:2px dashed #e3d5c5; text-align:left; }
+  .setting label{ font-weight:800; font-size:.95em; }
+  .setting .ctrl{ display:flex; align-items:center; gap:9px; }
+  input[type=range]{ width:150px; accent-color:var(--gold2); }
+  .toggle{
+    font-family:inherit; font-weight:900; font-size:.86em; padding:7px 15px; cursor:pointer;
+    border:3px solid var(--ink); border-radius:11px; background:#fffdf7; box-shadow:0 4px 0 rgba(46,36,56,.12);
+  }
+  .toggle.on{ background:linear-gradient(180deg,#ccf7e6,#8fe3c2); }
+
+  /* мобильное управление */
+  #touch{ position:fixed; inset:0; z-index:9; pointer-events:none; display:none; }
+  #touch.on{ display:block; }
+  .tbtn{
+    position:absolute; pointer-events:auto; border-radius:50%;
+    background:rgba(255,253,247,.35); border:3px solid rgba(46,36,56,.55);
+    color:#241d2e; font-weight:900; font-size:.9em;
+    display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px);
+  }
+  .tbtn:active{ background:rgba(255,201,87,.65); }
+
+  @media (max-width:620px){
+    .sheet{ padding:18px 16px; border-radius:20px; }
+    .match-row{ grid-template-columns:1fr; }
+    .bins{ grid-template-columns:1fr; }
+    #subtitles{ bottom:20%; }
+  }
+  body.hicontrast .panel{ border-color:#000; box-shadow:0 0 0 3px #fff, 0 6px 0 rgba(0,0,0,.5); }
+  body.hicontrast .sheet{ border-color:#000; }
+  body.hicontrast .btn{ border-color:#000; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="vignette"></div>
+
+<div id="hud">
+  <div class="hud-row">
+    <div class="panel" id="objective">
+      <div class="lbl">Задача</div>
+      <div class="val" id="objText">—</div>
+    </div>
+    <div class="panel mint">
+      <div class="lbl">Улики</div>
+      <div class="val" id="clueCount">0 / 5</div>
+    </div>
+  </div>
+  <div class="hud-row" style="align-items:flex-end">
+    <div class="panel gold">
+      <div class="lbl">Знания</div>
+      <div class="val" id="knowCount">0</div>
+    </div>
+    <div class="panel">
+      <div class="lbl">Подсказка</div>
+      <div class="val" style="font-size:.85em">
+        <b>E</b> — осмотреть · <b>J</b> — журнал · <b>T</b> — таблица
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="prompt">Нажмите <b>E</b>, чтобы осмотреть</div>
+<div id="toast"></div>
+<div id="subtitles"><div class="who" id="subWho"></div><br><div class="what" id="subWhat"></div></div>
+<div id="touch"></div>
+<div id="ui"></div>
+
+<script src="three.min.js"></script>
+<script src="chem-data.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* ============================================================================
+   АКАДЕМИЯ ХИМИЧЕСКИХ ТАЙН
+   Вертикальный срез: одна учебная миссия, 6 типов заданий, Архив элементов,
+   журнал, сохранение. Вся учебная часть — в chem-data.js.
+   ============================================================================ */
+
+/* ------------------------------------------------------------------ утилиты */
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => v<a?a:(v>b?b:v);
+const lerp  = (a,b,t) => a+(b-a)*t;
+const rand  = (a,b) => a+Math.random()*(b-a);
+const damp  = (a,b,l,dt) => lerp(a,b,1-Math.exp(-l*dt));
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function hex(n){ return '#'+n.toString(16).padStart(6,'0'); }
+function rgba(n,a){ return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+
+/* --------------------------------------------------------------- состояние */
+const STATE = {
+  mode: 'menu',            // menu | playing | paused | task | dialog
+  mission: 'm1',
+  clues: {},               // id -> true
+  clueCount: 0,
+  tasksDone: [],
+  taskIndex: 0,
+  wrongTries: 0,
+  terms: {},               // термин -> true
+  elementsKnown: {},       // символ -> true
+  skills: {},              // навык -> true
+  playerName: 'Исследователь',
+  saved: null
+};
+
+const SAVE_KEY = 'chemAcademy.save.v1';
+const SETTINGS_KEY = 'chemAcademy.settings.v1';
+
+const SETTINGS = {
+  music: 0.5, sfx: 0.7, uiScale: 1, reducedMotion: false, highContrast: false, subtitles: true
+};
+
+function loadSettings(){
+  try{
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw){ Object.assign(SETTINGS, JSON.parse(raw)); }
+  }catch(e){ /* повреждённые настройки — просто значения по умолчанию */ }
+}
+function saveSettings(){
+  try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(SETTINGS)); }catch(e){}
+}
+function applySettings(){
+  document.documentElement.style.setProperty('--ui-scale', SETTINGS.uiScale);
+  document.body.classList.toggle('reduced', SETTINGS.reducedMotion);
+  document.body.classList.toggle('hicontrast', SETTINGS.highContrast);
+}
+
+/* ---------------------------------------------------------------- сохранение */
+function saveGame(){
+  try{
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      mission: STATE.mission, clues: STATE.clues, clueCount: STATE.clueCount,
+      tasksDone: STATE.tasksDone, taskIndex: STATE.taskIndex,
+      terms: STATE.terms, elementsKnown: STATE.elementsKnown, skills: STATE.skills,
+      playerName: STATE.playerName
+    }));
+  }catch(e){}
+}
+function loadGame(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (!d || typeof d !== 'object') return null;
+    return d;
+  }catch(e){ return null; }   // повреждённое сохранение — не роняем игру
+}
+function hasSave(){ return !!loadGame(); }
+function clearSave(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} }
+
+/* -------------------------------------------------------------------- звук */
+let AC = null, musicGain = null, sfxGain = null, musicTimer = null;
+function audio(){
+  if (!AC){
+    try{
+      AC = new (window.AudioContext||window.webkitAudioContext)();
+      musicGain = AC.createGain(); musicGain.gain.value = SETTINGS.music*0.18; musicGain.connect(AC.destination);
+      sfxGain = AC.createGain(); sfxGain.gain.value = SETTINGS.sfx*0.5; sfxGain.connect(AC.destination);
+    }catch(e){ AC = null; }
+  }
+  if (AC && AC.state === 'suspended') AC.resume();
+  return AC;
+}
+function tone(freq,dur,type,vol,slide,dest){
+  const ac = audio(); if(!ac) return;
+  const t = ac.currentTime;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type||'sine'; o.frequency.setValueAtTime(freq,t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,freq+slide), t+dur);
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(vol||0.1, t+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  o.connect(g); g.connect(dest||sfxGain); o.start(t); o.stop(t+dur+0.04);
+}
+function noise(dur,vol,freq,q){
+  const ac = audio(); if(!ac) return;
+  const t = ac.currentTime, len = Math.max(1,Math.floor(ac.sampleRate*dur));
+  const buf = ac.createBuffer(1,len,ac.sampleRate), d = buf.getChannelData(0);
+  for (let i=0;i<len;i++) d[i] = (Math.random()*2-1)*(1-i/len);
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const f = ac.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq||900; f.Q.value=q||1.1;
+  const g = ac.createGain(); g.gain.value = vol||0.2;
+  src.connect(f); f.connect(g); g.connect(sfxGain); src.start(t);
+}
+const SFX = {
+  click(){ tone(660,0.05,'square',0.10); },
+  pick(){ [720,1040].forEach((f,i)=>setTimeout(()=>tone(f,0.12,'sine',0.14),i*80)); },
+  clue(){ [560,760,1020].forEach((f,i)=>setTimeout(()=>tone(f,0.14,'triangle',0.15),i*90)); },
+  good(){ [660,880,1180].forEach((f,i)=>setTimeout(()=>tone(f,0.16,'sine',0.16),i*95)); },
+  soft(){ tone(340,0.16,'sine',0.12,-60); },
+  step(){ noise(0.05,0.05,700,1.4); },
+  open(){ tone(420,0.10,'triangle',0.12,120); },
+  finish(){ [523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>tone(f,0.3,'triangle',0.17),i*110)); },
+  hint(){ tone(880,0.08,'sine',0.12,160); }
+};
+/* спокойная фоновая музыка */
+const MUSIC_NOTES = [261.63,329.63,392.00,440.00,392.00,329.63,293.66,349.23];
+let musicStep = 0;
+function startMusic(){
+  if (musicTimer || SETTINGS.music<=0) return;
+  musicTimer = setInterval(()=>{
+    if (SETTINGS.music<=0) return;
+    const n = MUSIC_NOTES[musicStep % MUSIC_NOTES.length];
+    musicStep++;
+    tone(n/2, 1.1, 'sine', 0.10, 0, musicGain);
+    if (musicStep % 4 === 0) tone(n, 0.9, 'triangle', 0.05, 0, musicGain);
+  }, 1150);
+}
+function stopMusic(){ if (musicTimer){ clearInterval(musicTimer); musicTimer = null; } }
+
+/* ============================================================================
+   3D: сцена, свет, камера
+   ============================================================================ */
+let renderer, scene, camera, clock;
+let worldGroup = null;
+const colliders = [];          // {x,z,r} препятствия
+const interactables = [];      // {id,label,mesh,pos,clue,used}
+
+const PAL = {
+  floor: 0xd9c6a6, floorLine: 0xc0a882,
+  wall: 0xe8d3b4, wallLow: 0xc9ad86, ceil: 0xf2e6d0,
+  table: 0xb8894e, tableTop: 0xe6d2b0,
+  metal: 0xa8b3c0, wood: 0x96683c, dark: 0x5a4a38,
+  coat: 0xfdfbf5, skin: 0xf6cfa8, skin2: 0xd9a173,
+  glass: 0xa8d8ee,
+  accent: 0xffc857, accent2: 0x4fc99a, accent3: 0x4a9ade, accent4: 0xff8fb1
+};
+
+function initThree(){
+  const canvas = $('game');
+  try{
+    renderer = new THREE.WebGLRenderer({ canvas, antialias:true, powerPreference:'high-performance' });
+  }catch(e){ return false; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
+  if (THREE.ACESFilmicToneMapping) renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.92;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x3a2f46);
+  scene.fog = new THREE.Fog(0x3a2f46, 26, 62);
+
+  camera = new THREE.PerspectiveCamera(58, window.innerWidth/window.innerHeight, 0.1, 200);
+  camera.position.set(0, 3.2, 9);
+
+  clock = new THREE.Clock();
+  window.addEventListener('resize', ()=>{
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+  });
+  return true;
+}
+
+/* мягкий «мультяшный» свет */
+function setupLights(){
+  scene.add(new THREE.AmbientLight(0xffe9d0, 0.22));
+
+  const hemi = new THREE.HemisphereLight(0xffe6c8, 0xa89070, 0.30);
+  scene.add(hemi);
+
+  const sun = new THREE.DirectionalLight(0xffeec8, 0.62);
+  sun.position.set(9, 15, 7);
+  sun.castShadow = true;
+  sun.shadow.mapSize.width = 1024; sun.shadow.mapSize.height = 1024;
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 60;
+  sun.shadow.camera.left = -18; sun.shadow.camera.right = 18;
+  sun.shadow.camera.top = 16; sun.shadow.camera.bottom = -16;
+  sun.shadow.bias = -0.0012;
+  scene.add(sun);
+
+  // тёплые лампы на потолке
+  [[ -6,5.6,-4],[6,5.6,-4],[0,5.6,4]].forEach(p=>{
+    const l = new THREE.PointLight(0xffdca8, 0.22, 16, 2);
+    l.position.set(p[0],p[1],p[2]);
+    scene.add(l);
+  });
+}
+
+/* ------------------------------------------------------------ материалы */
+const MAT = {};
+function initMaterials(){
+  MAT.floor = new THREE.MeshStandardMaterial({ color:PAL.floor, roughness:0.85, metalness:0.02 });
+  MAT.wall  = new THREE.MeshStandardMaterial({ color:PAL.wall, roughness:0.92, metalness:0.0 });
+  MAT.wallLow = new THREE.MeshStandardMaterial({ color:PAL.wallLow, roughness:0.9 });
+  MAT.ceil  = new THREE.MeshStandardMaterial({ color:PAL.ceil, roughness:0.95 });
+  MAT.table = new THREE.MeshStandardMaterial({ color:PAL.table, roughness:0.7, metalness:0.05 });
+  MAT.tableTop = new THREE.MeshStandardMaterial({ color:PAL.tableTop, roughness:0.55 });
+  MAT.metal = new THREE.MeshStandardMaterial({ color:PAL.metal, roughness:0.35, metalness:0.65 });
+  MAT.wood  = new THREE.MeshStandardMaterial({ color:PAL.wood, roughness:0.72, metalness:0.02 });
+  MAT.dark  = new THREE.MeshStandardMaterial({ color:PAL.dark, roughness:0.8 });
+  MAT.glass = new THREE.MeshStandardMaterial({ color:PAL.glass, roughness:0.15, metalness:0.1,
+                 transparent:true, opacity:0.55 });
+  MAT.accent = new THREE.MeshStandardMaterial({ color:PAL.accent, roughness:0.5, emissive:PAL.accent, emissiveIntensity:0.15 });
+  MAT.accent2 = new THREE.MeshStandardMaterial({ color:PAL.accent2, roughness:0.5, emissive:PAL.accent2, emissiveIntensity:0.18 });
+  MAT.accent3 = new THREE.MeshStandardMaterial({ color:PAL.accent3, roughness:0.5, emissive:PAL.accent3, emissiveIntensity:0.15 });
+}
+
+function mesh(geo, mat, x,y,z, rx,ry,rz){
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x||0,y||0,z||0);
+  if (rx||ry||rz) m.rotation.set(rx||0,ry||0,rz||0);
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+/* ============================================================================
+   МУЛЬТЯШНЫЙ ПЕРСОНАЖ
+   Крупная голова, большие глаза с зрачками и бликами, подвижные брови и рот.
+   Выражения переключаются по имени.
+   ============================================================================ */
+function makeCharacter(opts){
+  opts = opts || {};
+  const skin = opts.skin !== undefined ? opts.skin : PAL.skin;
+  const hairCol = opts.hair !== undefined ? opts.hair : 0x5a3b2a;
+  const coatCol = opts.coat !== undefined ? opts.coat : PAL.coat;
+  const accent = opts.accent !== undefined ? opts.accent : PAL.accent2;
+
+  const g = new THREE.Group();
+  const parts = {};
+
+  const skinMat = new THREE.MeshStandardMaterial({ color:skin, roughness:0.62 });
+  const skinDark = new THREE.MeshStandardMaterial({ color:new THREE.Color(skin).multiplyScalar(0.88).getHex(), roughness:0.65 });
+  const hairMat = new THREE.MeshStandardMaterial({ color:hairCol, roughness:0.75 });
+  const coatMat = new THREE.MeshStandardMaterial({ color:coatCol, roughness:0.7 });
+  const accentMat = new THREE.MeshStandardMaterial({ color:accent, roughness:0.55, emissive:accent, emissiveIntensity:0.12 });
+  const darkMat = new THREE.MeshStandardMaterial({ color:0x3a3040, roughness:0.7 });
+  const whiteMat = new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.35 });
+  const pupilMat = new THREE.MeshStandardMaterial({ color:0x2a2233, roughness:0.4 });
+  const mouthMat = new THREE.MeshStandardMaterial({ color:0x8a4a52, roughness:0.6 });
+
+  /* --- тело --- */
+  const torso = new THREE.Group();
+  torso.position.y = 0.92;
+  g.add(torso);
+  parts.torso = torso;
+
+  const body = mesh(new THREE.CapsuleGeometry(0.36, 0.60, 6, 14), coatMat, 0, 0, 0);
+  torso.add(body);
+  // халат: полы и воротник
+  const coatL = mesh(new THREE.BoxGeometry(0.20, 0.82, 0.10), coatMat, -0.19, 0.02, 0.29);
+  const coatR = mesh(new THREE.BoxGeometry(0.20, 0.82, 0.10), coatMat,  0.19, 0.02, 0.29);
+  torso.add(coatL, coatR);
+  const collar = mesh(new THREE.BoxGeometry(0.52, 0.12, 0.28), accentMat, 0, 0.40, 0.10);
+  torso.add(collar);
+  // значок на груди
+  const badge = mesh(new THREE.CylinderGeometry(0.07,0.07,0.03,14), accentMat, -0.16, 0.18, 0.30, Math.PI/2);
+  torso.add(badge);
+
+  /* --- руки --- */
+  function limb(len, thick, mat, px, py){
+    const pivot = new THREE.Group();
+    pivot.position.set(px, py, 0);
+    const m = mesh(new THREE.CapsuleGeometry(thick, len-thick*2, 4, 10), mat, 0, -len/2, 0);
+    pivot.add(m);
+    g.add(pivot);
+    return pivot;
+  }
+  parts.armL = limb(0.72, 0.115, coatMat, -0.46, 1.24);
+  parts.armR = limb(0.72, 0.115, coatMat,  0.46, 1.24);
+  parts.legL = limb(0.72, 0.135, darkMat, -0.17, 0.70);
+  parts.legR = limb(0.72, 0.135, darkMat,  0.17, 0.70);
+  // кисти рук
+  [-1,1].forEach(s=>{
+    const hand = mesh(new THREE.SphereGeometry(0.115,10,8), skinMat, 0, -0.74, 0);
+    (s<0?parts.armL:parts.armR).add(hand);
+  });
+
+  /* --- голова --- */
+  const head = new THREE.Group();
+  head.position.y = 1.68;
+  head.scale.setScalar(0.86);
+  g.add(head);
+  parts.head = head;
+
+  const skull = mesh(new THREE.SphereGeometry(0.38, 22, 18), skinMat, 0, 0, 0);
+  skull.scale.set(1, 0.98, 0.94);
+  head.add(skull);
+
+  // волосы: шапка
+  const hair = mesh(new THREE.SphereGeometry(0.393, 20, 14, 0, Math.PI*2, 0, Math.PI*0.62), hairMat, 0, 0.025, 0);
+  head.add(hair);
+  // чёлка
+  const fringe = mesh(new THREE.SphereGeometry(0.25, 16, 12), hairMat, 0, 0.25, 0.20);
+  fringe.scale.set(1.25, 0.6, 0.7);
+  head.add(fringe);
+
+  // уши
+  [-1,1].forEach(s=>{
+    const ear = mesh(new THREE.SphereGeometry(0.09,10,8), skinMat, s*0.37, -0.02, 0);
+    ear.scale.set(0.55,1,0.7);
+    head.add(ear);
+  });
+
+  // глаза: склера + зрачок + блик
+  const eyes = [];
+  [-1,1].forEach(s=>{
+    const eg = new THREE.Group();
+    eg.position.set(s*0.145, 0.02, 0.33);
+    head.add(eg);
+    const sclera = mesh(new THREE.SphereGeometry(0.106,16,14), whiteMat, 0,0,0);
+    sclera.scale.set(1,1.08,0.75);
+    eg.add(sclera);
+    const pupil = mesh(new THREE.SphereGeometry(0.051,14,12), pupilMat, 0,0,0.062);
+    eg.add(pupil);
+    const glint = mesh(new THREE.SphereGeometry(0.018,8,8),
+      new THREE.MeshBasicMaterial({ color:0xffffff }), 0.025, 0.03, 0.088);
+    eg.add(glint);
+    eyes.push({ group:eg, pupil, glint });
+  });
+  parts.eyes = eyes;
+
+  // брови
+  const brows = [];
+  [-1,1].forEach(s=>{
+    const b = mesh(new THREE.BoxGeometry(0.17,0.038,0.05), hairMat, s*0.145, 0.18, 0.345, 0,0, s*0.06);
+    head.add(b); brows.push(b);
+  });
+  parts.brows = brows;
+
+  // рот
+  const mouth = new THREE.Group();
+  mouth.position.set(0, -0.155, 0.345);
+  head.add(mouth);
+  const mouthTop = mesh(new THREE.BoxGeometry(0.20,0.03,0.04), mouthMat, 0,0,0);
+  const mouthBot = mesh(new THREE.BoxGeometry(0.20,0.03,0.04), mouthMat, 0,0,0);
+  mouth.add(mouthTop, mouthBot);
+  parts.mouth = { group:mouth, top:mouthTop, bot:mouthBot };
+
+  // нос
+  const nose = mesh(new THREE.SphereGeometry(0.045,10,8), skinDark, 0, -0.05, 0.37);
+  nose.scale.set(1,0.8,0.9);
+  head.add(nose);
+
+  /* --- данные персонажа --- */
+  g.userData.parts = parts;
+  g.userData.anim = { t: Math.random()*6, walk:0, talking:0, expression:'neutral', blink:0, blinkT: rand(1.5,4) };
+  g.userData.baseSkin = skin;
+  return g;
+}
+
+/* выражение лица */
+function setExpression(ch, name){
+  const a = ch.userData.anim;
+  if (a.expression === name) return;
+  a.expression = name;
+  const p = ch.userData.parts;
+  const [bl, br] = p.brows;
+  switch(name){
+    case 'happy':
+      bl.rotation.z = 0.22; br.rotation.z = -0.22;
+      bl.position.y = 0.235; br.position.y = 0.235;
+      break;
+    case 'thinking':
+      bl.rotation.z = -0.18; br.rotation.z = 0.30;
+      bl.position.y = 0.20; br.position.y = 0.25;
+      break;
+    case 'surprised':
+      bl.rotation.z = 0; br.rotation.z = 0;
+      bl.position.y = 0.27; br.position.y = 0.27;
+      break;
+    case 'explain':
+      bl.rotation.z = 0.10; br.rotation.z = -0.10;
+      bl.position.y = 0.23; br.position.y = 0.23;
+      break;
+    default: // neutral
+      bl.rotation.z = 0.06; br.rotation.z = -0.06;
+      bl.position.y = 0.22; br.position.y = 0.22;
+  }
+}
+
+/* анимация персонажа */
+function animateChar(ch, dt, opt){
+  opt = opt || {};
+  const p = ch.userData.parts, a = ch.userData.anim;
+  a.t += dt;
+
+  // ходьба
+  const moving = !!opt.moving, speed = opt.speed || 1;
+  if (moving){
+    a.walk += dt * (7 + speed*2.2);
+    const sw = Math.sin(a.walk) * 0.55 * Math.min(1, speed/5);
+    p.legL.rotation.x =  sw; p.legR.rotation.x = -sw;
+    p.armL.rotation.x = -sw*0.75; p.armR.rotation.x = sw*0.75;
+    p.torso.position.y = 0.92 + Math.abs(Math.sin(a.walk))*0.045;
+    p.head.rotation.z = Math.sin(a.walk*0.5)*0.035;
+  } else {
+    a.walk = damp(a.walk, 0, 5, dt);
+    const breathe = Math.sin(a.t*1.7)*0.018;
+    p.legL.rotation.x = damp(p.legL.rotation.x, 0, 7, dt);
+    p.legR.rotation.x = damp(p.legR.rotation.x, 0, 7, dt);
+    p.armL.rotation.x = damp(p.armL.rotation.x, Math.sin(a.t*1.5)*0.06, 5, dt);
+    p.armR.rotation.x = damp(p.armR.rotation.x, -Math.sin(a.t*1.5)*0.06, 5, dt);
+    p.torso.position.y = 0.92 + breathe;
+    p.head.rotation.z = damp(p.head.rotation.z, Math.sin(a.t*0.9)*0.02, 3, dt);
+  }
+  // руки чуть в стороны
+  p.armL.rotation.z = damp(p.armL.rotation.z,  0.10, 6, dt);
+  p.armR.rotation.z = damp(p.armR.rotation.z, -0.10, 6, dt);
+
+  // речь: рот открывается
+  if (opt.talking){
+    a.talking += dt;
+    const o = (Math.sin(a.talking*17)*0.5+0.5) * 0.10;
+    p.mouth.top.position.y =  0.02 + o*0.35;
+    p.mouth.bot.position.y = -0.02 - o*0.55;
+  } else {
+    a.talking = 0;
+    const ex = a.expression;
+    const smile = (ex==='happy'||ex==='explain') ? 0.055 : (ex==='thinking' ? -0.02 : 0.02);
+    p.mouth.top.position.y = damp(p.mouth.top.position.y,  0.028, 8, dt);
+    p.mouth.bot.position.y = damp(p.mouth.bot.position.y, -0.028 - smile, 8, dt);
+  }
+
+  // моргание
+  a.blinkT -= dt;
+  if (a.blinkT <= 0){ a.blink = 0.11; a.blinkT = rand(2.2, 5.4); }
+  if (a.blink > 0){
+    a.blink -= dt;
+    const k = 0.16;
+    p.eyes.forEach(e=> e.group.scale.y = k);
+  } else {
+    p.eyes.forEach(e=> e.group.scale.y = damp(e.group.scale.y, 1, 14, dt));
+  }
+
+  // взгляд чуть в сторону цели
+  if (opt.lookAt){
+    const dx = opt.lookAt.x - ch.position.x, dz = opt.lookAt.z - ch.position.z;
+    const yaw = Math.atan2(dx, dz);
+    ch.rotation.y = damp(ch.rotation.y, yaw, 4.5, dt);
+  } else if (opt.faceYaw !== undefined){
+    ch.rotation.y = damp(ch.rotation.y, opt.faceYaw, 8, dt);
+  }
+}
+
+/* ============================================================================
+   ЛАБОРАТОРИЯ
+   ============================================================================ */
+const ROOM = { w: 28, d: 19, h: 6.2 };
+
+function buildLab(){
+  worldGroup = new THREE.Group();
+  scene.add(worldGroup);
+  colliders.length = 0;
+  interactables.length = 0;
+
+  const hw = ROOM.w/2, hd = ROOM.d/2;
+
+  /* пол в клетку */
+  const floor = mesh(new THREE.BoxGeometry(ROOM.w, 0.4, ROOM.d), MAT.floor, 0, -0.2, 0);
+  worldGroup.add(floor);
+  // швы пола
+  for (let x = -hw+2; x < hw; x += 2.2){
+    worldGroup.add(mesh(new THREE.BoxGeometry(0.06,0.02,ROOM.d), MAT.floorLine, x, 0.011, 0));
+  }
+  for (let z = -hd+2; z < hd; z += 2.2){
+    worldGroup.add(mesh(new THREE.BoxGeometry(ROOM.w,0.02,0.06), MAT.floorLine, 0, 0.011, z));
+  }
+
+  /* стены */
+  worldGroup.add(mesh(new THREE.BoxGeometry(ROOM.w, ROOM.h, 0.4), MAT.wall, 0, ROOM.h/2, -hd));
+  worldGroup.add(mesh(new THREE.BoxGeometry(0.4, ROOM.h, ROOM.d), MAT.wall, -hw, ROOM.h/2, 0));
+  worldGroup.add(mesh(new THREE.BoxGeometry(0.4, ROOM.h, ROOM.d), MAT.wall,  hw, ROOM.h/2, 0));
+  worldGroup.add(mesh(new THREE.BoxGeometry(ROOM.w, ROOM.h, 0.4), MAT.wall, 0, ROOM.h/2,  hd));
+  // нижняя панель по стенам
+  worldGroup.add(mesh(new THREE.BoxGeometry(ROOM.w, 1.1, 0.5), MAT.wallLow, 0, 0.55, -hd+0.06));
+  worldGroup.add(mesh(new THREE.BoxGeometry(0.5, 1.1, ROOM.d), MAT.wallLow, -hw+0.06, 0.55, 0));
+  worldGroup.add(mesh(new THREE.BoxGeometry(0.5, 1.1, ROOM.d), MAT.wallLow,  hw-0.06, 0.55, 0));
+  // цветные полосы на стенах — «академические» акценты
+  const stripeMat = new THREE.MeshStandardMaterial({ color:PAL.accent2, roughness:0.55, emissive:PAL.accent2, emissiveIntensity:0.10 });
+  worldGroup.add(mesh(new THREE.BoxGeometry(ROOM.w, 0.22, 0.52), stripeMat, 0, 1.72, -hd+0.07));
+  worldGroup.add(mesh(new THREE.BoxGeometry(0.52, 0.22, ROOM.d), stripeMat, -hw+0.07, 1.72, 0));
+  worldGroup.add(mesh(new THREE.BoxGeometry(0.52, 0.22, ROOM.d), stripeMat,  hw-0.07, 1.72, 0));
+
+  /* потолок с панелями света */
+  worldGroup.add(mesh(new THREE.BoxGeometry(ROOM.w, 0.3, ROOM.d), MAT.ceil, 0, ROOM.h, 0));
+  [[-6,-4],[6,-4],[0,4]].forEach(p=>{
+    const lamp = mesh(new THREE.BoxGeometry(3.6,0.14,1.6),
+      new THREE.MeshStandardMaterial({ color:0xfff4dc, emissive:0xffe0a0, emissiveIntensity:0.9 }),
+      p[0], ROOM.h-0.22, p[1]);
+    worldGroup.add(lamp);
+  });
+
+  /* окна на дальней стене — тёплый свет снаружи */
+  [-8, 8].forEach(wx=>{
+    const win = mesh(new THREE.BoxGeometry(3.4, 2.4, 0.2), MAT.glass, wx, 3.4, -hd+0.22);
+    worldGroup.add(win);
+    const frameM = MAT.wood;
+    worldGroup.add(mesh(new THREE.BoxGeometry(3.7,0.16,0.26), frameM, wx, 4.65, -hd+0.24));
+    worldGroup.add(mesh(new THREE.BoxGeometry(3.7,0.16,0.26), frameM, wx, 2.15, -hd+0.24));
+    worldGroup.add(mesh(new THREE.BoxGeometry(0.16,2.6,0.26), frameM, wx-1.8, 3.4, -hd+0.24));
+    worldGroup.add(mesh(new THREE.BoxGeometry(0.16,2.6,0.26), frameM, wx+1.8, 3.4, -hd+0.24));
+    worldGroup.add(mesh(new THREE.BoxGeometry(0.10,2.4,0.2), frameM, wx, 3.4, -hd+0.26));
+    // свет из окна
+    const wl = new THREE.PointLight(0xffe6b8, 0.5, 16, 2);
+    wl.position.set(wx, 3.4, -hd+1.6); worldGroup.add(wl);
+  });
+
+  /* дверь */
+  const door = mesh(new THREE.BoxGeometry(2.0, 3.4, 0.24), MAT.wood, 0, 1.7, hd-0.22);
+  worldGroup.add(door);
+  worldGroup.add(mesh(new THREE.BoxGeometry(2.3,0.16,0.3), MAT.dark, 0, 3.5, hd-0.24));
+  worldGroup.add(mesh(new THREE.SphereGeometry(0.09,10,8), MAT.accent, 0.72, 1.7, hd-0.36));
+
+  /* лабораторные столы */
+  const tables = [ [-6,-2, 5.2,2.0], [6,-4, 4.4,1.9], [0,3.6, 5.0,2.0] ];
+  tables.forEach(t=>{
+    const [tx,tz,tw,td] = t;
+    const grp = new THREE.Group(); grp.position.set(tx,0,tz);
+    worldGroup.add(grp);
+    // столешница
+    grp.add(mesh(new THREE.BoxGeometry(tw,0.22,td), MAT.tableTop, 0, 1.02, 0));
+    // каркас
+    grp.add(mesh(new THREE.BoxGeometry(tw-0.3,0.10,td-0.3), MAT.table, 0, 0.86, 0));
+    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(c=>{
+      grp.add(mesh(new THREE.BoxGeometry(0.14,1.0,0.14), MAT.table, c[0]*(tw/2-0.2), 0.5, c[1]*(td/2-0.2)));
+    });
+    // колбы и пробирки как декор
+    for (let i=0;i<3;i++){
+      const px = tx - tw/2 + 0.7 + i*1.1;
+      const col = [0x9fd8ef, 0xc7f2d8, 0xffd9a8][i%3];
+      grp.add(mesh(new THREE.CylinderGeometry(0.17,0.14,0.42,12),
+        new THREE.MeshStandardMaterial({ color:col, roughness:0.25, transparent:true, opacity:0.85 }),
+        px - tx, 1.34, -0.35));
+    }
+    // горелка
+    grp.add(mesh(new THREE.CylinderGeometry(0.1,0.14,0.24,10), MAT.metal, 0.9, 1.24, 0.35));
+    colliders.push({ x:tx, z:tz, r:Math.max(tw,td)*0.42 });
+  });
+
+  /* шкаф (у правой стены) */
+  const cup = new THREE.Group(); cup.position.set(11.6, 0, 0);
+  worldGroup.add(cup);
+  cup.add(mesh(new THREE.BoxGeometry(2.0,4.2,3.4), MAT.metal, 0, 2.1, 0));
+  cup.add(mesh(new THREE.BoxGeometry(0.14,3.2,2.6), MAT.glass, -1.02, 2.1, 0));
+  cup.add(mesh(new THREE.BoxGeometry(0.2,0.16,0.5), MAT.dark, -1.1, 2.0, 0.9));
+  cup.add(mesh(new THREE.BoxGeometry(0.2,0.16,0.5), MAT.dark, -1.1, 2.0, -0.9));
+  colliders.push({ x:11.6, z:0, r:1.9 });
+
+  /* полка (у левой стены) */
+  const sh = new THREE.Group(); sh.position.set(-11.8, 0, 3.2);
+  worldGroup.add(sh);
+  sh.add(mesh(new THREE.BoxGeometry(1.4,0.24,4.0), MAT.wood, 0, 1.4, 0));
+  sh.add(mesh(new THREE.BoxGeometry(1.2,0.24,4.0), MAT.wood, 0, 2.4, 0));
+  sh.add(mesh(new THREE.BoxGeometry(0.3,2.7,0.3), MAT.dark, -0.3, 1.35, -1.7));
+  sh.add(mesh(new THREE.BoxGeometry(0.3,2.7,0.3), MAT.dark, -0.3, 1.35,  1.7));
+  // банки (одной не хватает — это улика)
+  sh.add(mesh(new THREE.CylinderGeometry(0.24,0.24,0.5,14), MAT.glass, 0.1, 1.78, -1.1));
+  sh.add(mesh(new THREE.CylinderGeometry(0.24,0.24,0.5,14), MAT.glass, 0.1, 2.78, -0.1));
+  sh.add(mesh(new THREE.CylinderGeometry(0.24,0.24,0.5,14), MAT.glass, 0.1, 2.78, 1.2));
+  colliders.push({ x:-11.8, z:3.2, r:1.6 });
+
+  /* плакат с правилами на дальней стене */
+  const poster = new THREE.Group(); poster.position.set(-3.4, 0, -hd+0.3);
+  worldGroup.add(poster);
+  poster.add(mesh(new THREE.BoxGeometry(4.0,2.7,0.12), MAT.accent, 0, 3.6, 0));
+  poster.add(mesh(new THREE.BoxGeometry(3.5,2.2,0.14),
+    new THREE.MeshStandardMaterial({ color:0xfffaf0, roughness:0.8 }), 0, 3.6, 0.04));
+  // «строки» правил
+  for (let i=0;i<4;i++){
+    poster.add(mesh(new THREE.BoxGeometry(2.6,0.10,0.05), MAT.dark, 0, 4.3 - i*0.42, 0.13));
+  }
+
+  /* доска с формулами (декор, читаемые символы — в интерфейсе) */
+  const board = new THREE.Group(); board.position.set(6.6, 0, -hd+0.3);
+  worldGroup.add(board);
+  board.add(mesh(new THREE.BoxGeometry(4.6,2.9,0.14), MAT.dark, 0, 3.5, 0));
+  board.add(mesh(new THREE.BoxGeometry(4.2,2.5,0.16),
+    new THREE.MeshStandardMaterial({ color:0x36524a, roughness:0.85 }), 0, 3.5, 0.05));
+  for (let i=0;i<3;i++){
+    board.add(mesh(new THREE.BoxGeometry(2.0,0.07,0.04),
+      new THREE.MeshStandardMaterial({ color:0xd8f0e4, emissive:0x6fa88f, emissiveIntensity:0.2 }),
+      -1.0, 4.3 - i*0.7, 0.14));
+  }
+
+  /* подставка для демонстрации */
+  const demo = new THREE.Group(); demo.position.set(0,0,-6.4);
+  worldGroup.add(demo);
+  demo.add(mesh(new THREE.CylinderGeometry(0.7,0.9,1.1,16), MAT.table, 0, 0.55, 0));
+  demo.add(mesh(new THREE.CylinderGeometry(0.34,0.28,0.6,14), MAT.glass, 0, 1.4, 0));
+  colliders.push({ x:0, z:-6.4, r:1.1 });
+
+  /* растения для уюта */
+  [[-12.4,-6.6],[12.2,7.4]].forEach(p=>{
+    const pot = mesh(new THREE.CylinderGeometry(0.42,0.32,0.7,14), 
+      new THREE.MeshStandardMaterial({ color:0xc9705a, roughness:0.8 }), p[0], 0.35, p[1]);
+    worldGroup.add(pot);
+    for (let i=0;i<5;i++){
+      const ang = i/5*Math.PI*2;
+      const leaf = mesh(new THREE.SphereGeometry(0.32,10,8),
+        new THREE.MeshStandardMaterial({ color:0x63b56a, roughness:0.75 }),
+        p[0]+Math.cos(ang)*0.22, 1.0+Math.sin(i)*0.12, p[1]+Math.sin(ang)*0.22);
+      leaf.scale.set(0.8,1.5,0.8);
+      worldGroup.add(leaf);
+    }
+  });
+
+  /* ---- интерактивные объекты (по данным из chem-data.js) ---- */
+  INTERACTABLES.forEach(def=>{
+    const grp = new THREE.Group();
+    grp.position.set(def.pos[0], 0, def.pos[2]);
+    worldGroup.add(grp);
+
+    const w = def.size[0], h = def.size[1], d = def.size[2];
+    const body = mesh(new THREE.BoxGeometry(w,h,d),
+      new THREE.MeshStandardMaterial({ color:def.color, roughness:0.6 }), 0, h/2, 0);
+    grp.add(body);
+
+    // мягкая подсветка-подсказка (не пересвечивает сцену)
+    const halo = mesh(new THREE.SphereGeometry(Math.max(w,d)*0.5, 12, 10),
+      new THREE.MeshBasicMaterial({ color:PAL.accent2, transparent:true, opacity:0.10,
+        blending:THREE.AdditiveBlending, depthWrite:false }), 0, h*0.55, 0);
+    halo.scale.set(1, 0.7, 1);
+    grp.add(halo);
+
+    interactables.push({ id:def.id, label:def.label, clue:def.clue, group:grp, halo, used:false,
+                         pos:new THREE.Vector3(def.pos[0], 0, def.pos[2]), data:def });
+
+    // у столов и шкафов — препятствие
+    if (def.id !== 'poster'){
+      colliders.push({ x:def.pos[0], z:def.pos[2], r:Math.max(w,d)*0.5 });
+    }
+  });
+}
+
+/* ============================================================================
+   ИГРОК И КАМЕРА
+   ============================================================================ */
+const player = {
+  obj: null, pos: new THREE.Vector3(0, 0, 1.2), vel: new THREE.Vector3(),
+  yaw: Math.PI, speed: 0, radius: 0.42
+};
+const cam = { yaw: Math.PI, pitch: 0.30, dist: 6.6, height: 2.1, pos: new THREE.Vector3(), look: new THREE.Vector3() };
+const keys = {};
+let touchMove = { x:0, y:0, active:false };
+
+function buildPlayer(){
+  player.obj = makeCharacter({ skin:0xf6cfa8, hair:0x6b4a2a, coat:0xfdfbf5, accent:PAL.accent2 });
+  player.obj.position.copy(player.pos);
+  scene.add(player.obj);
+}
+
+function canStand(x,z){
+  const hw = ROOM.w/2 - 0.6, hd = ROOM.d/2 - 0.6;
+  if (x < -hw || x > hw || z < -hd || z > hd) return false;
+  for (const c of colliders){
+    const d = Math.hypot(x-c.x, z-c.z);
+    if (d < c.r + player.radius) return false;
+  }
+  return true;
+}
+function movePlayer(dt){
+  let ix = 0, iz = 0;
+  if (keys['a'] || keys['arrowleft']) ix -= 1;
+  if (keys['d'] || keys['arrowright']) ix += 1;
+  if (keys['w'] || keys['arrowup']) iz -= 1;
+  if (keys['s'] || keys['arrowdown']) iz += 1;
+  if (touchMove.active){ ix += touchMove.x; iz += touchMove.y; }
+
+  const len = Math.hypot(ix,iz);
+  let moved = false;
+  if (len > 0.05){
+    ix /= len; iz /= len;
+    // движение относительно камеры
+    const cs = Math.cos(cam.yaw), sn = Math.sin(cam.yaw);
+    const wx = ix*cs - iz*sn;
+    const wz = ix*sn + iz*cs;
+    const sp = 4.6;
+    const nx = player.pos.x + wx*sp*dt;
+    const nz = player.pos.z + wz*sp*dt;
+    if (canStand(nx, player.pos.z)) player.pos.x = nx;
+    if (canStand(player.pos.x, nz)) player.pos.z = nz;
+    player.speed = sp; moved = true;
+    player.yaw = Math.atan2(wx, wz);
+    // звук шагов
+    player._step = (player._step||0) + dt*sp;
+    if (player._step > 2.4){ player._step = 0; SFX.step(); }
+  } else {
+    player.speed = damp(player.speed, 0, 8, dt);
+  }
+  player.obj.position.copy(player.pos);
+  return moved;
+}
+function updateCamera(dt){
+  const cy = cam.yaw, cp = cam.pitch;
+  const tx = player.pos.x, ty = player.pos.y + 1.7, tz = player.pos.z;
+  let cx = tx - Math.sin(cy)*Math.cos(cp)*cam.dist;
+  let cz = tz - Math.cos(cy)*Math.cos(cp)*cam.dist;
+  let cyy = ty + Math.sin(cp)*cam.dist + cam.height*0.25;
+
+  // камера не должна выходить за стены комнаты, иначе видно пустоту
+  const pad = 0.8;
+  cx = clamp(cx, -ROOM.w/2 + pad, ROOM.w/2 - pad);
+  cz = clamp(cz, -ROOM.d/2 + pad, ROOM.d/2 - pad);
+  cyy = clamp(cyy, 1.5, ROOM.h - 0.9);
+
+  const want = new THREE.Vector3(cx, cyy, cz);
+  // если камера упёрлась в стену — подтягиваем её к игроку, чтобы он был в кадре
+  const flat = Math.hypot(cx - tx, cz - tz);
+  const desiredFlat = Math.cos(cp)*cam.dist;
+  const targetY = (flat < desiredFlat*0.75) ? (ty + 0.9) : ty;
+  cam.pos.lerp(want, 1-Math.exp(-8*dt));
+  cam.look.lerp(new THREE.Vector3(tx, targetY, tz), 1-Math.exp(-12*dt));
+  camera.position.copy(cam.pos);
+  camera.lookAt(cam.look);
+}
+
+/* ============================================================================
+   ДИАЛОГИ И ПОДСКАЗКИ НА ЭКРАНЕ
+   ============================================================================ */
+let subtitleQueue = [], subtitleTimer = 0, subtitleBusy = false;
+function say(who, text, dur){
+  // субтитры всегда текстом; «озвучка» — только короткий тон
+  $('subWho').textContent = who;
+  $('subWhat').textContent = text;
+  $('subtitles').classList.add('on');
+  tone(who==='Наставник'?420:360, 0.05, 'sine', 0.05);
+  clearTimeout(subtitleTimer);
+  const d = dur || (1400 + text.length*42);
+  subtitleTimer = setTimeout(()=>{ $('subtitles').classList.remove('on'); }, d);
+  // мимика наставника
+  if (mentor && who === 'Наставник') setExpression(mentor, text.indexOf('?')>=0 ? 'thinking' : 'explain');
+}
+function playDialog(lines, onDone){
+  subtitleBusy = true;
+  let i = 0;
+  function next(){
+    if (i >= lines.length){ subtitleBusy = false; if (onDone) onDone(); return; }
+    const l = lines[i++];
+    say(l.who, l.text, Math.max(1800, 1200 + l.text.length*46));
+    setTimeout(next, Math.max(2200, 1500 + l.text.length*48));
+  }
+  next();
+}
+let toastTimer = 0;
+function toast(text, ms){
+  $('toast').textContent = text;
+  $('toast').classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> $('toast').classList.remove('on'), ms||1900);
+}
+
+/* ============================================================================
+   НАСТАВНИК
+   ============================================================================ */
+let mentor = null;
+function buildMentor(){
+  mentor = makeCharacter({ skin:0xe9bd93, hair:0x9a9a9a, coat:0xfdfbf5, accent:PAL.accent3 });
+  mentor.position.set(-1.6, 0, 1.4);
+  mentor.scale.setScalar(1.06);
+  scene.add(mentor);
+  setExpression(mentor, 'happy');
+  colliders.push({ x:-1.6, z:1.4, r:0.75 });
+}
+
+/* ============================================================================
+   ВЗАИМОДЕЙСТВИЕ
+   ============================================================================ */
+function nearestInteractable(){
+  let best = null, bd = 2.6;
+  for (const it of interactables){
+    if (it.used) continue;
+    const d = Math.hypot(player.pos.x-it.pos.x, player.pos.z-it.pos.z);
+    if (d < bd){ bd = d; best = it; }
+  }
+  return best;
+}
+function nearestTalk(){
+  if (!mentor) return false;
+  return Math.hypot(player.pos.x-mentor.position.x, player.pos.z-mentor.position.z) < 2.6;
+}
+function doInteract(){
+  if (STATE.mode !== 'playing') return;
+  const it = nearestInteractable();
+  if (it){ inspect(it); return; }
+  if (nearestTalk()){ talkToMentor(); return; }
+}
+function inspect(it){
+  it.used = true;
+  it.halo.material.opacity = 0.05;
+  const clue = CLUES[it.clue];
+  const dialogKey = {
+    c_samples:'clue_samples', c_logbook:'clue_logbook',
+    c_cupboard:'clue_cupboard', c_shelf:'clue_shelf', c_poster:'clue_poster'
+  }[it.clue];
+  SFX.clue();
+  // эффект «нашёл»
+  if (!STATE.clues[it.clue]){
+    STATE.clues[it.clue] = true;
+    STATE.clueCount++;
+    saveGame();
+    toast('Улика найдена: ' + clue.title, 2100);
+  }
+  updateHud();
+  if (dialogKey) playDialog(DIALOGS[dialogKey]);
+  if (STATE.clueCount >= MISSIONS.m1.cluesTotal) setTimeout(onAllClues, 2400);
+}
+function talkToMentor(){
+  if (STATE.clueCount >= MISSIONS.m1.cluesTotal){
+    playDialog(DIALOGS.all_clues, startTaskSequence);
+  } else {
+    playDialog(DIALOGS.no_clues);
+  }
+}
+function onAllClues(){
+  if (STATE.mode !== 'playing') return;
+  toast('Все улики собраны! Подойдите к наставнику', 2600);
+}
+
+/* ============================================================================
+   ИНТЕРФЕЙС: HUD, ЭКРАНЫ
+   ============================================================================ */
+function updateHud(){
+  $('objText').textContent = 'Найти улики в лаборатории';
+  $('clueCount').textContent = STATE.clueCount + ' / ' + MISSIONS.m1.cluesTotal;
+  const know = Object.keys(STATE.terms).length + Object.keys(STATE.elementsKnown).length;
+  $('knowCount').textContent = know;
+}
+function showHud(on){ $('hud').classList.toggle('on', !!on); }
+
+/* оверлей-слои */
+const uiRoot = $('ui');
+function clearUI(){ uiRoot.innerHTML = ''; }
+function openSheet(html){
+  clearUI();
+  const m = document.createElement('div');
+  m.className = 'modal';
+  m.innerHTML = '<div class="sheet">' + html + '</div>';
+  uiRoot.appendChild(m);
+  return m;
+}
+function closeSheet(){ clearUI(); }
+
+/* ============================================================================
+   ЗАДАНИЯ
+   ============================================================================ */
+let currentTask = null;
+
+function startTaskSequence(){
+  STATE.taskIndex = 0;
+  STATE.mode = 'task';
+  runTask();
+}
+function runTask(){
+  const order = MISSIONS.m1.taskOrder;
+  if (STATE.taskIndex >= order.length){ finishTasks(); return; }
+  const id = order[STATE.taskIndex];
+  currentTask = TASKS[id];
+  STATE.wrongTries = 0;
+  renderTask(currentTask);
+}
+function taskHeader(t){
+  return '<div class="task-head">'
+    + '<div class="task-goal">Глава ' + t.chapter + ' · ' + t.goal + '</div>'
+    + '<div class="task-title">' + t.title + '</div>'
+    + '<div class="task-prompt">' + t.prompt + '</div>'
+    + '</div>';
+}
+function hintButtonHtml(){
+  return '<button class="btn ghost small" id="btnHint">Подсказка</button>';
+}
+function showHint(t){
+  const lvl = Math.min(STATE.wrongTries, (t.hints||[]).length-1);
+  const h = (t.hints && t.hints[lvl]) || 'Подумай ещё раз, опираясь на улики.';
+  SFX.hint();
+  const box = $('hintArea');
+  if (box){
+    box.innerHTML = '<div class="hintbox"><div class="ttl">Подсказка ' + (lvl+1) + '</div>' + h + '</div>';
+  } else {
+    toast(h, 4200);
+  }
+}
+function markTerms(t){
+  // записываем термины главы в журнал
+  const ch = CHAPTERS.find(c=>c.id===t.chapter);
+  if (ch) ch.terms.forEach(term => STATE.terms[term]=true);
+  saveGame();
+}
+
+/* ---------------- рендер разных типов заданий ---------------- */
+function renderTask(t){
+  clearUI();
+  let body = '';
+  if (t.type === 'multi')      body = taskMulti(t);
+  else if (t.type === 'classify') body = taskClassify(t);
+  else if (t.type === 'match')    body = taskMatch(t);
+  else if (t.type === 'choice')   body = taskChoice(t);
+  else body = taskMulti(t);
+
+  const m = openSheet(taskHeader(t) + body + '<div id="hintArea"></div>'
+    + '<div id="feedbackArea"></div>'
+    + '<div style="margin-top:10px">' + hintButtonHtml() + '<button class="btn blue" id="btnCheck">Проверить</button></div>');
+
+  const hb = $('btnHint'); if (hb) hb.onclick = ()=> showHint(t);
+  const cb = $('btnCheck'); if (cb) cb.onclick = checkCurrent;
+}
+
+/* --- выбор нескольких верных --- */
+function taskMulti(t){
+  const opts = shuffle(t.options);
+  let html = '<div class="options" id="optWrap">';
+  opts.forEach(o=>{
+    html += '<div class="opt" data-id="'+o.id+'"><div class="tick">✓</div><div>'+o.text+'</div></div>';
+  });
+  html += '</div>';
+  currentTask._picked = {};
+  currentTask._opts = opts;
+  setTimeout(()=>{
+    uiRoot.querySelectorAll('.opt').forEach(el=>{
+      el.onclick = ()=>{
+        const id = el.getAttribute('data-id');
+        if (currentTask._locked) return;
+        currentTask._picked[id] = !currentTask._picked[id];
+        el.classList.toggle('sel', currentTask._picked[id]);
+        SFX.click();
+      };
+    });
+  }, 0);
+  return html;
+}
+/* --- классификация по группам --- */
+function taskClassify(t){
+  const items = shuffle(t.items);
+  currentTask._place = {};   // itemId -> categoryId
+  let html = '<div class="classify-wrap">';
+  html += '<div class="pool" id="pool">';
+  items.forEach(i=> html += '<div class="chip" data-id="'+i.id+'">'+i.text+'</div>');
+  html += '</div>';
+  html += '<div class="bins">';
+  t.categories.forEach(c=>{
+    html += '<div class="bin" data-cat="'+c.id+'"><h4>'+c.text+'</h4><div class="placed" id="bin_'+c.id+'"></div></div>';
+  });
+  html += '</div></div>';
+  setTimeout(()=>{
+    uiRoot.querySelectorAll('.chip').forEach(chip=>{
+      chip.onclick = ()=>{
+        if (currentTask._locked) return;
+        const id = chip.getAttribute('data-id');
+        const cur = currentTask._place[id];
+        const cats = t.categories.map(c=>c.id);
+        const next = cats[(cats.indexOf(cur)+1) % cats.length];
+        // если первый раз — ставим в первую корзину
+        currentTask._place[id] = (cur===undefined) ? cats[0] : next;
+        SFX.click();
+        redrawClassify(t);
+      };
+    });
+    redrawClassify(t);
+  }, 0);
+  return html;
+}
+function redrawClassify(t){
+  t.categories.forEach(c=>{
+    const bin = $('bin_'+c.id); if (!bin) return;
+    bin.innerHTML = '';
+  });
+  const pool = $('pool'); if (pool) pool.innerHTML = '';
+  t.items.forEach(i=>{
+    const cat = currentTask._place[i.id];
+    const chip = document.createElement('div');
+    chip.className = 'chip inbin';
+    chip.textContent = i.text;
+    chip.setAttribute('data-id', i.id);
+    chip.onclick = ()=>{
+      if (currentTask._locked) return;
+      const cur = currentTask._place[i.id];
+      const cats = t.categories.map(c=>c.id);
+      currentTask._place[i.id] = cats[(cats.indexOf(cur)+1) % cats.length];
+      SFX.click();
+      redrawClassify(t);
+    };
+    if (cat !== undefined){ const b = $('bin_'+cat); if (b) b.appendChild(chip); }
+    else if (pool) pool.appendChild(chip);
+  });
+}
+/* --- сопоставление (выпадающие списки) --- */
+function taskMatch(t){
+  const rights = shuffle(t.pairs.map(p=>p.right));
+  currentTask._sel = {};
+  let html = '<div class="match-wrap">';
+  t.pairs.forEach(p=>{
+    html += '<div class="match-row">'
+      + '<div class="match-left">'+p.left+'</div>'
+      + '<select class="match-sel" data-id="'+p.id+'"><option value="">— выбери свойство —</option>';
+    rights.forEach(r=> html += '<option value="'+r+'">'+r+'</option>');
+    html += '</select></div>';
+  });
+  html += '</div>';
+  setTimeout(()=>{
+    uiRoot.querySelectorAll('.match-sel').forEach(sel=>{
+      sel.onchange = ()=>{ currentTask._sel[sel.getAttribute('data-id')] = sel.value; SFX.click(); };
+    });
+  }, 0);
+  return html;
+}
+/* --- одиночный выбор --- */
+function taskChoice(t){
+  const opts = t.options;
+  currentTask._pick = null;
+  let html = '<div class="options">';
+  opts.forEach(o=>{
+    html += '<div class="opt" data-id="'+o.id+'"><div class="tick">✓</div><div>'+o.text+'</div></div>';
+  });
+  html += '</div>';
+  setTimeout(()=>{
+    uiRoot.querySelectorAll('.opt').forEach(el=>{
+      el.onclick = ()=>{
+        if (currentTask._locked) return;
+        currentTask._pick = el.getAttribute('data-id');
+        uiRoot.querySelectorAll('.opt').forEach(e=> e.classList.remove('sel'));
+        el.classList.add('sel');
+        SFX.click();
+      };
+    });
+  }, 0);
+  return html;
+}
+
+/* ---------------- проверка ответов ---------------- */
+function checkCurrent(){
+  const t = currentTask;
+  if (t._locked) return;
+  let ok = false, details = [];
+
+  if (t.type === 'multi'){
+    const picked = t._picked || {};
+    ok = t.options.every(o => !!picked[o.id] === o.correct);
+    t.options.forEach(o=>{
+      if (!!picked[o.id] !== o.correct){
+        details.push((o.correct ? 'Не отмечено: «'+o.text+'» — это верный пункт.' 
+                               : 'Отмечено лишнее: «'+o.text+'». ' + (t.mistakes[o.id]||'')));
+      }
+    });
+  }
+  else if (t.type === 'classify'){
+    const place = t._place || {};
+    ok = t.items.every(i => place[i.id] === i.category);
+    t.items.forEach(i=>{
+      if (place[i.id] !== i.category){
+        const catName = (t.categories.find(c=>c.id===i.category)||{}).text || i.category;
+        details.push('«'+i.text+'» → правильно: '+catName+'. ' + (t.mistakes[i.id]||''));
+      }
+    });
+  }
+  else if (t.type === 'match'){
+    const sel = t._sel || {};
+    ok = t.pairs.every(p => sel[p.id] === p.right);
+    t.pairs.forEach(p=>{
+      if (sel[p.id] !== p.right){
+        details.push('«'+p.left+'» → правильно: '+p.right+'. ' + (t.mistakes[p.id]||''));
+      }
+    });
+  }
+  else { // choice
+    ok = t._pick === t.options.find(o=>o.correct).id;
+    if (!ok){
+      const wrong = t.options.find(o=>o.id===t._pick);
+      details.push((t.mistakes[wrong && wrong.id] || '') || 'Эта версия не подтверждается уликами.');
+    }
+  }
+
+  const fb = $('feedbackArea');
+  if (ok){
+    t._locked = true;
+    SFX.good();
+    STATE.tasksDone.push(t.id);
+    markTerms(t);
+    saveGame();
+    fb.innerHTML = '<div class="feedback ok"><div class="ttl">' + LANG.ru.correct + '</div>'
+      + '<div>' + t.explain + '</div></div>';
+    // блокируем взаимодействие
+    uiRoot.querySelectorAll('.opt,.chip,.match-sel').forEach(e=> e.style.pointerEvents='none');
+    const cb = $('btnCheck'); if (cb){ cb.textContent = 'Дальше →'; cb.onclick = ()=>{ STATE.taskIndex++; runTask(); }; }
+    const hb = $('btnHint'); if (hb) hb.style.display = 'none';
+    if (mentor) setExpression(mentor, 'happy');
+  } else {
+    STATE.wrongTries++;
+    SFX.soft();
+    fb.innerHTML = '<div class="feedback bad"><div class="ttl">' + LANG.ru.wrong + '</div>'
+      + '<div>' + LANG.ru.explanation + ':</div><ul><li>' + details.filter(Boolean).join('</li><li>') + '</li></ul>'
+      + '<div style="margin-top:8px;font-weight:800">Попробуй ещё раз — прогресс не потерян.</div></div>';
+    if (mentor) setExpression(mentor, 'thinking');
+    // на 2-й ошибке показываем подсказку автоматически
+    if (STATE.wrongTries >= 2) setTimeout(()=> showHint(t), 400);
+  }
+}
+
+function finishTasks(){
+  STATE.mode = 'task';
+  STATE.skills['наблюдение и вывод'] = true;
+  STATE.skills['работа с уликами'] = true;
+  STATE.skills['классификация веществ'] = true;
+  CHAPTER1_ELEMENTS.forEach(s=> STATE.elementsKnown[s]=true);
+  saveGame();
+  showMissionDone();
+}
+
+/* ============================================================================
+   ЭКРАН ЗАВЕРШЕНИЯ МИССИИ
+   ============================================================================ */
+function showMissionDone(){
+  SFX.finish();
+  const terms = Object.keys(STATE.terms);
+  const els = Object.keys(STATE.elementsKnown);
+  const m = openSheet(
+    '<h1>Миссия <span class="accent">выполнена</span></h1>'
+    + '<p class="subtitle">Дело о пропавшем образце закрыто. Вывод подтверждён уликами.</p>'
+    + '<div class="stat">'
+    +   '<div><div class="v">'+STATE.clueCount+'/'+MISSIONS.m1.cluesTotal+'</div><div class="k">улик</div></div>'
+    +   '<div><div class="v">'+STATE.tasksDone.length+'/'+MISSIONS.m1.taskOrder.length+'</div><div class="k">заданий</div></div>'
+    +   '<div><div class="v">'+terms.length+'</div><div class="k">терминов</div></div>'
+    +   '<div><div class="v">'+els.length+'</div><div class="k">элементов</div></div>'
+    + '</div>'
+    + '<div class="rank">Юный исследователь</div>'
+    + '<h3>Что вы узнали</h3>'
+    + '<div class="journal-list">'
+    +   '<div class="jitem found"><b>Наблюдение и вывод</b>Наблюдение — то, что видно и измеримо. Вывод требует доказательств.</div>'
+    +   '<div class="jitem found"><b>Тело и вещество</b>Тело — предмет (ложка, колба). Вещество — материал (железо, стекло, вода).</div>'
+    +   '<div class="jitem found"><b>Физические свойства</b>Цвет, блеск, состояние, растворимость, притяжение магнитом.</div>'
+    +   '<div class="jitem found"><b>Правила лаборатории</b>Халат, аккуратность, мыть руки, ничего не пробовать на вкус.</div>'
+    + '</div>'
+    + '<h3>Стоит повторить</h3>'
+    + '<p>Загляните в <b>Архив элементов</b> — там уже отмечены изученные элементы: '
+    + CHAPTER1_ELEMENTS.join(', ') + '.</p>'
+    + '<div style="margin-top:14px">'
+    +   '<button class="btn mint" id="btnArchive">Архив элементов</button>'
+    +   '<button class="btn blue" id="btnJournal">Журнал</button>'
+    +   '<button class="btn ghost" id="btnMenu">В меню</button>'
+    + '</div>'
+  );
+  $('btnArchive').onclick = ()=> openArchive();
+  $('btnJournal').onclick = ()=> openJournal();
+  $('btnMenu').onclick = ()=>{ closeSheet(); showMenu(); };
+  STATE.mode = 'done';
+}
+
+/* ============================================================================
+   АРХИВ ЭЛЕМЕНТОВ (периодическая таблица + упражнения)
+   ============================================================================ */
+let archiveTab = 'table';
+function openArchive(){
+  STATE.mode = 'archive';
+  renderArchive();
+}
+function renderArchive(){
+  let body = '';
+  if (archiveTab === 'table')      body = archiveTable();
+  else if (archiveTab === 'train') body = archiveTrain();
+  else                            body = archiveKnown();
+
+  const m = openSheet(
+    '<h1>Архив <span class="accent">элементов</span></h1>'
+    + '<p class="subtitle">Упрощённая периодическая таблица для школьного уровня. '
+    + 'Зелёная рамка — элементы, которые вы уже встречали.</p>'
+    + '<div class="tabs">'
+    +   tabBtn('table','Таблица') + tabBtn('train','Тренировка') + tabBtn('known','Изученные')
+    + '</div>'
+    + body
+    + '<div id="elCardArea"></div>'
+    + '<div style="margin-top:12px"><button class="btn ghost" id="btnCloseArch">Закрыть</button></div>'
+  );
+  $('btnCloseArch').onclick = ()=>{ closeSheet(); if (STATE.mode==='archive'){ STATE.mode = 'playing'; } };
+  uiRoot.querySelectorAll('[data-atab]').forEach(t=>{
+    t.onclick = ()=>{ archiveTab = t.getAttribute('data-atab'); SFX.click(); renderArchive(); };
+  });
+  if (archiveTab === 'table') bindElementCells();
+  if (archiveTab === 'train') bindTrain();
+}
+function tabBtn(id,label){
+  return '<button class="tab'+(archiveTab===id?' on':'')+'" data-atab="'+id+'">'+label+'</button>';
+}
+function archiveTable(){
+  // сетка 18 x 6, заполняем по row/col из данных
+  let cells = '';
+  const map = {};
+  ELEMENTS.forEach(e=>{ map[e.row+'_'+e.col] = e; });
+  for (let r=1; r<=6; r++){
+    for (let c=1; c<=18; c++){
+      const e = map[r+'_'+c];
+      if (e){
+        const cls = e.group==='Металлы' ? 'metal' : (e.group==='Инертные газы' ? 'noble' : 'nonmetal');
+        const known = STATE.elementsKnown[e.sym] ? ' known' : '';
+        cells += '<div class="cell '+cls+known+'" data-sym="'+e.sym+'">'
+              + '<span class="n">'+e.z+'</span>'+e.sym+'</div>';
+      } else {
+        cells += '<div class="cell empty"></div>';
+      }
+    }
+  }
+  return '<div class="ptable"><div class="ptable-inner">'+cells+'</div></div>';
+}
+function bindElementCells(){
+  uiRoot.querySelectorAll('[data-sym]').forEach(cell=>{
+    cell.onclick = ()=>{
+      const sym = cell.getAttribute('data-sym');
+      showElementCard(sym);
+      SFX.click();
+    };
+  });
+}
+function showElementCard(sym){
+  const e = ELEMENTS.find(x=>x.sym===sym);
+  if (!e) return;
+  const known = !!STATE.elementsKnown[sym];
+  const area = $('elCardArea');
+  area.innerHTML = '<div class="elcard">'
+    + '<div class="bigsym">'+e.sym+'</div>'
+    + '<div class="row"><span>Название</span><b>'+e.ru+'</b></div>'
+    + '<div class="row"><span>Порядковый номер</span><b>'+e.z+'</b></div>'
+    + '<div class="row"><span>Группа</span><b>'+e.group+'</b></div>'
+    + '<div class="row"><span>Факт</span><b style="max-width:60%;text-align:right">'+e.fact+'</b></div>'
+    + '<div class="row"><span>Встречался в деле</span><b>'+(known?'да':'пока нет')+'</b></div>'
+    + (known?'':'<div style="margin-top:10px"><button class="btn mint small" id="btnMarkKnown">Отметить как изученный</button></div>')
+    + '</div>';
+  const b = $('btnMarkKnown');
+  if (b) b.onclick = ()=>{ STATE.elementsKnown[sym]=true; saveGame(); updateHud(); showElementCard(sym); SFX.good(); };
+}
+/* --- тренировка: символ ↔ название --- */
+let trainQ = null;
+function archiveTrain(){
+  if (!trainQ) trainQ = makeTrainQuestion();
+  let html = '<div class="elcard"><div class="task-goal">Тренировка</div>'
+    + '<div class="task-title">'+trainQ.title+'</div>'
+    + '<div class="options" id="trainOpts">';
+  trainQ.options.forEach(o=>{
+    html += '<div class="opt" data-ans="'+o.id+'"><div class="tick">✓</div><div>'+o.text+'</div></div>';
+  });
+  html += '</div><div id="trainFb"></div></div>';
+  return html;
+}
+function makeTrainQuestion(){
+  // чередуем типы: символ→название и название→символ
+  const pool = ELEMENTS.filter(e=> STATE.elementsKnown[e.sym]);
+  const useKnown = pool.length >= 4 && Math.random() < 0.5;
+  const src = useKnown ? pool : ELEMENTS;
+  const target = src[Math.floor(Math.random()*src.length)];
+  const kindSym = Math.random() < 0.5;
+  const others = shuffle(src.filter(e=>e.sym!==target.sym)).slice(0,3);
+  const opts = shuffle([target, ...others]).map(e=>({
+    id:e.sym, text: kindSym ? e.ru : e.sym
+  }));
+  return {
+    sym: target.sym,
+    title: kindSym
+      ? 'Как называется элемент <b>'+target.sym+'</b>?'
+      : 'Какой символ у элемента <b>'+target.ru+'</b>?',
+    correct: target.sym,
+    options: opts
+  };
+}
+function bindTrain(){
+  uiRoot.querySelectorAll('[data-ans]').forEach(el=>{
+    el.onclick = ()=>{
+      const ans = el.getAttribute('data-ans');
+      const e = ELEMENTS.find(x=>x.sym===trainQ.sym);
+      const fb = $('trainFb');
+      uiRoot.querySelectorAll('[data-ans]').forEach(x=> x.style.pointerEvents='none');
+      if (ans === trainQ.correct){
+        el.classList.add('ok');
+        STATE.elementsKnown[trainQ.sym] = true;
+        saveGame(); updateHud();
+        SFX.good();
+        fb.innerHTML = '<div class="feedback ok"><div class="ttl">Верно!</div>'
+          + e.sym + ' — ' + e.ru + '. ' + e.fact + '</div>'
+          + '<button class="btn blue small" id="trainNext">Ещё вопрос</button>';
+      } else {
+        el.classList.add('bad');
+        uiRoot.querySelectorAll('[data-ans]').forEach(x=>{
+          if (x.getAttribute('data-ans')===trainQ.correct) x.classList.add('ok');
+        });
+        SFX.soft();
+        fb.innerHTML = '<div class="feedback bad"><div class="ttl">Пока не сходится</div>'
+          + 'Правильно: <b>'+e.sym+' — '+e.ru+'</b>. '+e.fact
+          + '</div><button class="btn blue small" id="trainNext">Ещё вопрос</button>';
+      }
+      const nb = $('trainNext');
+      if (nb) nb.onclick = ()=>{ trainQ = makeTrainQuestion(); renderArchive(); };
+    };
+  });
+}
+function archiveKnown(){
+  const known = ELEMENTS.filter(e=> STATE.elementsKnown[e.sym]);
+  if (!known.length){
+    return '<p>Пока нет изученных элементов. Осмотрите лабораторию и выполните задания — '
+         + 'элементы будут отмечены здесь автоматически.</p>';
+  }
+  let html = '<div class="journal-list">';
+  known.forEach(e=>{
+    html += '<div class="jitem found"><b>'+e.sym+' — '+e.ru+'</b>'
+          + '<span class="tag">№'+e.z+'</span><span class="tag">'+e.group+'</span><br>'+e.fact+'</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+/* ============================================================================
+   ЖУРНАЛ
+   ============================================================================ */
+function openJournal(){
+  const prevMode = STATE.mode;
+  STATE.mode = 'journal';
+  const clues = CLUES;
+  let clueHtml = '';
+  Object.keys(clues).forEach(id=>{
+    const c = clues[id], found = !!STATE.clues[id];
+    clueHtml += '<div class="jitem'+(found?' found':'')+'"><b>'+(found?c.title:'Не найдено')+'</b>'
+      + (found ? c.text : 'Улика ещё не осмотрена.') + '</div>';
+  });
+  const terms = Object.keys(STATE.terms);
+  const skills = Object.keys(STATE.skills);
+  const m = openSheet(
+    '<h1>Журнал <span class="accent">расследования</span></h1>'
+    + '<p class="subtitle">Дело: «'+MISSIONS.m1.title+'» · '+MISSIONS.m1.place+'</p>'
+    + '<h3>Ход дела</h3>'
+    + '<p>'+MISSIONS.m1.brief+' Найдено улик: <b>'+STATE.clueCount+' из '+MISSIONS.m1.cluesTotal+'</b>.</p>'
+    + '<h3>Улики</h3><div class="journal-list">'+clueHtml+'</div>'
+    + '<h3>Термины</h3>'
+    + (terms.length ? '<div class="journal-list">'+terms.map(t=>'<div class="jitem found">'+t+'</div>').join('')+'</div>'
+                    : '<p>Пока пусто. Термины появятся после заданий.</p>')
+    + '<h3>Навыки</h3>'
+    + (skills.length ? '<div class="journal-list">'+skills.map(s=>'<div class="jitem found">'+s+'</div>').join('')+'</div>'
+                     : '<p>Пока пусто.</p>')
+    + '<div style="margin-top:14px"><button class="btn ghost" id="btnCloseJ">Закрыть</button></div>'
+  );
+  $('btnCloseJ').onclick = ()=>{ closeSheet(); STATE.mode = (prevMode==='done')?'done':'playing'; };
+}
+
+/* ============================================================================
+   ГЛАВНОЕ МЕНЮ, НАСТРОЙКИ, ПАУЗА
+   ============================================================================ */
+function showMenu(){
+  STATE.mode = 'menu';
+  showHud(false);
+  const save = loadGame();
+  const cont = save && save.clueCount !== undefined;
+  const m = openSheet(
+    '<h1>'+GAME_TITLE.ru.split(' ')[0]+' <span class="accent">'+GAME_TITLE.ru.split(' ').slice(1).join(' ')+'</span></h1>'
+    + '<p class="subtitle">Детективная игра по школьной химии.<br>'
+    + 'Вы — юный исследователь. Изучайте химию и раскрывайте тайны академии.</p>'
+    + '<div class="modes">'
+    +   '<div class="mode" id="mNew"><div class="ic">🔎</div><b>Новая игра</b>'
+    +     '<i>Глава 1: введение в лабораторию. Пропавший образец.</i></div>'
+    +   '<div class="mode'+(cont?'':' locked')+'" id="mCont"><div class="ic">📖</div><b>Продолжить</b>'
+    +     '<i>'+(cont ? ('Найдено улик: '+(save.clueCount||0)+', заданий: '+((save.tasksDone||[]).length)) : 'Сохранения пока нет')+'</i></div>'
+    +   '<div class="mode" id="mArch"><div class="ic">🧪</div><b>Архив элементов</b>'
+    +     '<i>Периодическая таблица и тренировка символов.</i></div>'
+    + '</div>'
+    + '<h3>Главы курса</h3>'
+    + '<div class="journal-list">'
+    + CHAPTERS.map(c=>{
+        const ready = c.status === 'ready';
+        return '<div class="jitem'+(ready?' found':'')+'"><b>Глава '+c.id+'. '+c.title+'</b>'
+             + '<span class="tag">'+(ready?'готова':'в разработке')+'</span><br>'+c.goal+'</div>';
+      }).join('')
+    + '</div>'
+    + '<h3>Управление</h3>'
+    + '<div class="keys">'
+    +   '<div class="key"><b>W A S D</b> ходить</div>'
+    +   '<div class="key"><b>Мышь</b> обзор</div>'
+    +   '<div class="key"><b>E</b> осмотреть</div>'
+    +   '<div class="key"><b>J</b> журнал</div>'
+    +   '<div class="key"><b>T</b> архив элементов</div>'
+    +   '<div class="key"><b>Esc</b> пауза</div>'
+    + '</div>'
+    + '<div style="margin-top:10px">'
+    +   '<button class="btn ghost" id="mSettings">Настройки</button>'
+    + '</div>'
+    + '<p style="margin-top:14px;font-size:.86em">Опыты в игре — учебные и смоделированные. '
+    + 'Настоящие опыты выполняют только в лаборатории по правилам и под руководством учителя.</p>'
+  );
+  $('mNew').onclick = ()=>{ audio(); startNew(); };
+  if (cont) $('mCont').onclick = ()=>{ audio(); continueGame(); };
+  $('mArch').onclick = ()=>{ audio(); openArchive(); };
+  $('mSettings').onclick = ()=> showSettings();
+}
+function startNew(){
+  clearSave();
+  STATE.clues = {}; STATE.clueCount = 0; STATE.tasksDone = []; STATE.taskIndex = 0;
+  STATE.terms = {}; STATE.elementsKnown = {}; STATE.skills = {};
+  saveGame();
+  startPlaying();
+  // вступление показываем после того, как сцена отрисуется
+  setTimeout(()=>{ playDialog(DIALOGS.intro); }, 350);
+}
+function continueGame(){
+  const d = loadGame();
+  if (!d){ startNew(); return; }
+  STATE.clues = d.clues||{}; STATE.clueCount = d.clueCount||0;
+  STATE.tasksDone = d.tasksDone||[]; STATE.taskIndex = d.taskIndex||0;
+  STATE.terms = d.terms||{}; STATE.elementsKnown = d.elementsKnown||{};
+  STATE.skills = d.skills||{};
+  startPlaying();
+  // восстанавливаем использованные улики
+  interactables.forEach(it=>{
+    if (STATE.clues[it.clue]){ it.used = true; it.halo.material.opacity = 0.05; }
+  });
+  if (STATE.clueCount >= MISSIONS.m1.cluesTotal) toast('Улики собраны. Поговорите с наставником.', 2600);
+}
+function startPlaying(){
+  STATE.mode = 'playing';
+  closeSheet();
+  showHud(true);
+  updateHud();
+  startMusic();
+}
+function showSettings(){
+  const prev = STATE.mode;
+  STATE.mode = 'settings';
+  const m = openSheet(
+    '<h1>Настройки</h1>'
+    + '<div class="setting"><label>Музыка</label><div class="ctrl">'
+    +   '<input type="range" id="sMusic" min="0" max="1" step="0.05" value="'+SETTINGS.music+'">'
+    +   '<b id="vMusic">'+Math.round(SETTINGS.music*100)+'%</b></div></div>'
+    + '<div class="setting"><label>Звуковые эффекты</label><div class="ctrl">'
+    +   '<input type="range" id="sSfx" min="0" max="1" step="0.05" value="'+SETTINGS.sfx+'">'
+    +   '<b id="vSfx">'+Math.round(SETTINGS.sfx*100)+'%</b></div></div>'
+    + '<div class="setting"><label>Размер текста</label><div class="ctrl">'
+    +   '<input type="range" id="sScale" min="0.85" max="1.35" step="0.05" value="'+SETTINGS.uiScale+'">'
+    +   '<b id="vScale">'+Math.round(SETTINGS.uiScale*100)+'%</b></div></div>'
+    + '<div class="setting"><label>Меньше анимаций</label>'
+    +   '<button class="toggle'+(SETTINGS.reducedMotion?' on':'')+'" id="tReduce">'+(SETTINGS.reducedMotion?'ВКЛ':'ВЫКЛ')+'</button></div>'
+    + '<div class="setting"><label>Высокая контрастность</label>'
+    +   '<button class="toggle'+(SETTINGS.highContrast?' on':'')+'" id="tContrast">'+(SETTINGS.highContrast?'ВКЛ':'ВЫКЛ')+'</button></div>'
+    + '<div class="setting"><label>Субтитры (реплики текстом)</label>'
+    +   '<button class="toggle'+(SETTINGS.subtitles?' on':'')+'" id="tSubs">'+(SETTINGS.subtitles?'ВКЛ':'ВЫКЛ')+'</button></div>'
+    + '<p style="margin-top:12px;font-size:.86em">В игре нет ограничения по времени: '
+    + 'можно думать над заданиями столько, сколько нужно.</p>'
+    + '<div style="margin-top:12px"><button class="btn blue" id="btnCloseSet">Готово</button>'
+    + '<button class="btn ghost small" id="btnWipe">Удалить сохранение</button></div>'
+  );
+  $('sMusic').oninput = e=>{ SETTINGS.music = +e.target.value; $('vMusic').textContent = Math.round(SETTINGS.music*100)+'%';
+    if (musicGain) musicGain.gain.value = SETTINGS.music*0.18; saveSettings(); if (SETTINGS.music>0) startMusic(); };
+  $('sSfx').oninput = e=>{ SETTINGS.sfx = +e.target.value; $('vSfx').textContent = Math.round(SETTINGS.sfx*100)+'%';
+    if (sfxGain) sfxGain.gain.value = SETTINGS.sfx*0.5; saveSettings(); };
+  $('sScale').oninput = e=>{ SETTINGS.uiScale = +e.target.value; $('vScale').textContent = Math.round(SETTINGS.uiScale*100)+'%';
+    applySettings(); saveSettings(); };
+  $('tReduce').onclick = function(){ SETTINGS.reducedMotion = !SETTINGS.reducedMotion; applySettings(); saveSettings();
+    this.classList.toggle('on', SETTINGS.reducedMotion); this.textContent = SETTINGS.reducedMotion?'ВКЛ':'ВЫКЛ'; };
+  $('tContrast').onclick = function(){ SETTINGS.highContrast = !SETTINGS.highContrast; applySettings(); saveSettings();
+    this.classList.toggle('on', SETTINGS.highContrast); this.textContent = SETTINGS.highContrast?'ВКЛ':'ВЫКЛ'; };
+  $('tSubs').onclick = function(){ SETTINGS.subtitles = !SETTINGS.subtitles; saveSettings();
+    this.classList.toggle('on', SETTINGS.subtitles); this.textContent = SETTINGS.subtitles?'ВКЛ':'ВЫКЛ'; };
+  $('btnCloseSet').onclick = ()=>{ closeSheet(); if (prev==='menu') showMenu(); else STATE.mode = 'playing'; };
+  $('btnWipe').onclick = ()=>{ clearSave(); toast('Сохранение удалено', 1800); };
+}
+function showPause(){
+  if (STATE.mode !== 'playing') return;
+  STATE.mode = 'paused';
+  const m = openSheet(
+    '<h1>Пауза</h1>'
+    + '<p class="subtitle">Дело: «'+MISSIONS.m1.title+'»<br>Улик: '+STATE.clueCount+' из '+MISSIONS.m1.cluesTotal+'</p>'
+    + '<button class="btn blue" id="btnResume">Продолжить</button>'
+    + '<button class="btn ghost" id="btnJournal2">Журнал</button>'
+    + '<button class="btn ghost" id="btnArchive2">Архив элементов</button>'
+    + '<button class="btn ghost" id="btnSettings2">Настройки</button>'
+    + '<button class="btn ghost" id="btnToMenu">В меню</button>'
+  );
+  $('btnResume').onclick = ()=>{ closeSheet(); STATE.mode='playing'; };
+  $('btnJournal2').onclick = ()=>{ const p=STATE.mode; openJournal(); };
+  $('btnArchive2').onclick = ()=>{ openArchive(); };
+  $('btnSettings2').onclick = ()=>{ showSettings(); };
+  $('btnToMenu').onclick = ()=>{ saveGame(); showMenu(); };
+}
+
+/* ============================================================================
+   УПРАВЛЕНИЕ
+   ============================================================================ */
+function keyId(e){
+  if (e.code){
+    if (e.code==='Escape') return 'escape';
+    if (e.code==='ArrowUp') return 'arrowup';
+    if (e.code==='ArrowDown') return 'arrowdown';
+    if (e.code==='ArrowLeft') return 'arrowleft';
+    if (e.code==='ArrowRight') return 'arrowright';
+    if (e.code.indexOf('Key')===0) return e.code.slice(3).toLowerCase();
+  }
+  return (e.key||'').toLowerCase();
+}
+window.addEventListener('keydown', e=>{
+  const k = keyId(e);
+  if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','e','j','t','escape'].indexOf(k)>=0) e.preventDefault();
+  if (k==='escape'){
+    if (STATE.mode==='playing') showPause();
+    else if (STATE.mode==='paused'){ closeSheet(); STATE.mode='playing'; }
+    else if (['archive','journal','settings','done','task'].indexOf(STATE.mode)>=0){ /* закрываем вручную кнопкой */ }
+    return;
+  }
+  if (STATE.mode==='playing'){
+    if (k==='e'){ doInteract(); return; }
+    if (k==='j'){ openJournal(); return; }
+    if (k==='t'){ openArchive(); return; }
+  }
+  keys[k] = true;
+}, false);
+window.addEventListener('keyup', e=>{ keys[keyId(e)] = false; }, false);
+window.addEventListener('blur', ()=>{ for (const k in keys) keys[k]=false; });
+
+/* мышь: захват и поворот камеры */
+const canvasEl = $('game');
+let dragging = false, lastX = 0, lastY = 0;
+canvasEl.addEventListener('click', ()=>{
+  if (STATE.mode === 'playing' && document.pointerLockElement !== canvasEl && canvasEl.requestPointerLock){
+    const p = canvasEl.requestPointerLock();
+    if (p && p.catch) p.catch(()=>{});
+  }
+});
+document.addEventListener('pointerlockchange', ()=>{
+  document.body.classList.toggle('locked', document.pointerLockElement === canvasEl);
+});
+document.addEventListener('mousemove', e=>{
+  if (STATE.mode !== 'playing') return;
+  if (document.pointerLockElement === canvasEl){
+    cam.yaw -= e.movementX * 0.0026;
+    cam.pitch = clamp(cam.pitch + e.movementY * 0.0022, -0.25, 0.85);
+  }
+});
+canvasEl.addEventListener('mousedown', e=>{ dragging = true; lastX = e.clientX; lastY = e.clientY; });
+window.addEventListener('mouseup', ()=>{ dragging = false; });
+window.addEventListener('mousemove', e=>{
+  if (!dragging || document.pointerLockElement === canvasEl || STATE.mode !== 'playing') return;
+  cam.yaw -= (e.clientX-lastX)*0.006;
+  cam.pitch = clamp(cam.pitch + (e.clientY-lastY)*0.004, -0.25, 0.85);
+  lastX = e.clientX; lastY = e.clientY;
+});
+
+/* касания */
+function initTouch(){
+  if (!('ontouchstart' in window) && !navigator.maxTouchPoints) return;
+  const root = $('touch'); root.classList.add('on');
+  // джойстик
+  const stick = document.createElement('div');
+  stick.className = 'tbtn';
+  stick.style.cssText = 'width:132px;height:132px;left:20px;bottom:24px;';
+  root.appendChild(stick);
+  const knob = document.createElement('div');
+  knob.style.cssText = 'position:absolute;width:56px;height:56px;border-radius:50%;background:rgba(46,36,56,.35);left:36px;top:36px;';
+  stick.appendChild(knob);
+  let sid = null, cx=0, cy=0;
+  function start(e){
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    const r = stick.getBoundingClientRect();
+    cx = r.left+r.width/2; cy = r.top+r.height/2;
+    sid = t.identifier; move(e);
+  }
+  function move(e){
+    let t = null;
+    for (const tt of e.changedTouches) if (tt.identifier===sid) t = tt;
+    if (!t) return;
+    const dx = t.clientX-cx, dy = t.clientY-cy, len = Math.hypot(dx,dy)||1, max = 48;
+    const cl = Math.min(len,max);
+    knob.style.left = (36 + dx/len*cl)+'px';
+    knob.style.top  = (36 + dy/len*cl)+'px';
+    touchMove.x = clamp(dx/max,-1,1); touchMove.y = clamp(dy/max,-1,1); touchMove.active = true;
+  }
+  function end(e){
+    for (const t of e.changedTouches) if (t.identifier===sid) sid = null;
+    if (sid===null){ touchMove.x=0; touchMove.y=0; touchMove.active=false; knob.style.left='36px'; knob.style.top='36px'; }
+  }
+  stick.addEventListener('touchstart', start, {passive:false});
+  stick.addEventListener('touchmove', move, {passive:false});
+  stick.addEventListener('touchend', end, {passive:false});
+  stick.addEventListener('touchcancel', end, {passive:false});
+  // кнопки
+  function btn(label, right, bottom, size, fn){
+    const b = document.createElement('div');
+    b.className = 'tbtn'; b.textContent = label;
+    b.style.cssText = 'width:'+size+'px;height:'+size+'px;right:'+right+'px;bottom:'+bottom+'px;font-size:.78em;';
+    b.addEventListener('touchstart', e=>{ e.preventDefault(); fn(); }, {passive:false});
+    root.appendChild(b);
+  }
+  btn('E', 20, 110, 72, ()=> doInteract());
+  btn('ЖУРНАЛ', 108, 32, 62, ()=> openJournal());
+  btn('ТАБЛ.', 108, 108, 62, ()=> openArchive());
+  // поворот камеры свайпом
+  let lid = null, lx=0, ly=0;
+  canvasEl.addEventListener('touchstart', e=>{
+    for (const t of e.changedTouches){
+      if (t.clientX > window.innerWidth*0.42){ lid = t.identifier; lx=t.clientX; ly=t.clientY; }
+    }
+  }, {passive:true});
+  canvasEl.addEventListener('touchmove', e=>{
+    for (const t of e.changedTouches){
+      if (t.identifier===lid){
+        cam.yaw -= (t.clientX-lx)*0.006;
+        cam.pitch = clamp(cam.pitch + (t.clientY-ly)*0.005, -0.25, 0.85);
+        lx=t.clientX; ly=t.clientY;
+      }
+    }
+  }, {passive:true});
+  canvasEl.addEventListener('touchend', ()=>{ lid=null; }, {passive:true});
+}
+
+/* ============================================================================
+   ЦИКЛ
+   ============================================================================ */
+let lastT = 0;
+function update(dt){
+  if (STATE.mode === 'playing'){
+    const moved = movePlayer(dt);
+    animateChar(player.obj, dt, { moving: moved, speed: player.speed });
+    const near = nearestTalk();          // объявляем здесь — нужно и ниже
+    if (mentor){
+      const lookAt = near ? player.pos : null;
+      animateChar(mentor, dt, { moving:false, lookAt });
+      if (near) setExpression(mentor, STATE.clueCount>=MISSIONS.m1.cluesTotal ? 'happy' : 'explain');
+    }
+    // подсказка взаимодействия
+    const it = nearestInteractable();
+    const pEl = $('prompt');
+    if (it && !subtitleBusy){
+      pEl.innerHTML = 'Нажмите <b>E</b>, чтобы осмотреть: ' + it.label;
+      pEl.classList.add('on');
+    } else if (near && !subtitleBusy){
+      pEl.innerHTML = 'Нажмите <b>E</b>, чтобы поговорить с наставником';
+      pEl.classList.add('on');
+    } else {
+      pEl.classList.remove('on');
+    }
+    // интерактивные объекты слегка светятся
+    for (const o of interactables){
+      if (o.used) continue;
+      const k = 0.08 + Math.sin(performance.now()*0.002 + o.pos.x)*0.035;
+      o.halo.material.opacity = k;
+    }
+  }
+  updateCamera(dt);
+}
+function render(){ renderer.render(scene, camera); }
+function loop(){
+  requestAnimationFrame(loop);
+  let dt = clock.getDelta();
+  if (dt > 0.06) dt = 0.06;
+  update(dt);
+  render();
+}
+
+/* ============================================================================
+   СТАРТ
+   ============================================================================ */
+function boot(){
+  loadSettings();
+  applySettings();
+  if (!initThree()){
+    document.body.innerHTML =
+      '<div style="color:#fff;font-family:sans-serif;padding:40px;text-align:center">'
+      + '<h2>Не удалось запустить 3D</h2>'
+      + '<p>Похоже, WebGL недоступен в этом браузере.<br>'
+      + 'Откройте игру в Chrome, Edge или Firefox.</p></div>';
+    return;
+  }
+  initMaterials();
+  setupLights();
+  buildLab();
+  buildPlayer();
+  buildMentor();
+  initTouch();
+  updateCamera(1);
+  showMenu();
+  requestAnimationFrame(loop);
+}
+
+/* отладочный доступ */
+if (location.hash === '#debug'){
+  window.__chem = {
+    STATE, SETTINGS, TASKS, ELEMENTS, CHAPTERS, MISSIONS, DIALOGS,
+    CLUES, INTERACTABLES, CHAPTER1_ELEMENTS,
+    startNew, continueGame, startPlaying, startTaskSequence, runTask, checkCurrent,
+    openArchive, openJournal, showMissionDone, inspect, doInteract,
+    setExpression, makeTrainQuestion,
+    scene: ()=>scene, player, mentor: ()=>mentor,
+    interactables: ()=>interactables,
+    findInteractable: id => interactables.find(i=>i.id===id),
+    forceClues: ()=>{ interactables.forEach(i=>{ if(!STATE.clues[i.clue]){ STATE.clues[i.clue]=true; STATE.clueCount++; i.used=true; } }); updateHud(); },
+    answerCurrent: correct => {
+      const t = currentTask; if(!t) return 'no task';
+      if (t.type==='multi'){
+        t._picked = {};
+        t.options.forEach(o=>{ t._picked[o.id] = correct ? o.correct : !o.correct; });
+      } else if (t.type==='classify'){
+        t._place = {};
+        t.items.forEach(i=>{ t._place[i.id] = correct ? i.category : (t.categories.find(c=>c.id!==i.category)||{}).id; });
+      } else if (t.type==='match'){
+        t._sel = {};
+        const rights = t.pairs.map(p=>p.right);
+        t.pairs.forEach((p,idx)=>{ t._sel[p.id] = correct ? p.right : rights[(idx+1)%rights.length]; });
+      } else {
+        t._pick = correct ? t.options.find(o=>o.correct).id : t.options.find(o=>!o.correct).id;
+      }
+      checkCurrent();
+      return 'answered';
+    },
+    currentTask: ()=>currentTask,
+    update: dt => update(dt||0.016),
+    render: ()=>render()
+  };
+}
+
+boot();
+
+})();
+</script>
+</body>
+</html>
