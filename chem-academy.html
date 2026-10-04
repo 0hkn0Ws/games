@@ -60,8 +60,7 @@
   #objective .val{ font-size:1em; font-weight:800; line-height:1.35; }
 
   /* подсказка взаимодействия */
-  #prompt{
-    position:absolute; left:50%; bottom:16%;
+  #prompt{    position:absolute; left:50%; bottom:16%;
     transform:translateX(-50%);
     background:rgba(46,36,56,.92); color:#fff;
     border-radius:14px; padding:calc(9px*var(--ui-scale)) calc(16px*var(--ui-scale));
@@ -80,6 +79,44 @@
     opacity:0; transition:opacity .25s; max-width:80vw; text-align:center;
   }
   #toast.on{ opacity:1; }
+
+  /* ---------- кнопка «Как играть» и раскрывающаяся справка ---------- */
+  #helpToggle{
+    font-family:inherit; color:var(--ink); cursor:pointer; pointer-events:auto;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-width:104px; padding:calc(8px*var(--ui-scale)) calc(14px*var(--ui-scale));
+    background:rgba(255,253,247,.93); border:3px solid var(--ink); border-radius:16px;
+    box-shadow:var(--shadow);
+  }
+  #helpToggle:hover{ filter:brightness(1.04); }
+  #helpToggle .val{ color:var(--plum); }
+  #helpPanel2{
+    position:fixed; right:calc(20px*var(--ui-scale)); bottom:calc(110px*var(--ui-scale));
+    width:min(430px, 84vw); z-index:40; max-height:70vh; overflow-y:auto;
+    background:rgba(255,253,247,.97); border:3px solid var(--ink); border-radius:18px;
+    box-shadow:var(--shadow); padding:calc(14px*var(--ui-scale)) calc(18px*var(--ui-scale));
+    text-align:left; line-height:1.6; pointer-events:auto;
+  }
+  #helpPanel2 h4{
+    font-size:.82em; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--plum); margin:0 0 8px;
+  }
+  #helpPanel2 .krow{
+    display:flex; gap:9px; align-items:flex-start; margin:6px 0; font-size:.92em;
+  }
+  #helpPanel2 .krow b{
+    flex:0 0 auto; background:var(--ink); color:#fff; border-radius:7px;
+    padding:2px 9px; font-size:.86em; font-weight:900; white-space:nowrap;
+  }
+  #helpPanel2 .tip{
+    margin-top:9px; padding-top:9px; border-top:2px dashed #e3d5c2;
+    font-size:.88em; color:var(--ink2);
+  }
+  #helpPanel2 .closeHelp{
+    margin-top:10px; width:100%; font-family:inherit; font-weight:900; font-size:.9em;
+    padding:8px; border:3px solid var(--ink); border-radius:12px; cursor:pointer;
+    background:linear-gradient(180deg,#fff,#f0e6d8); color:var(--ink);
+  }
 
   /* субтитры */
   #subtitles{
@@ -353,15 +390,10 @@
       <div class="lbl">Знания</div>
       <div class="val" id="knowCount">0</div>
     </div>
-    <div class="panel" id="helpPanel">
-      <div class="lbl">Как играть</div>
-      <div class="val" style="font-size:.82em;line-height:1.5">
-        <b>W A S D</b> или <b>стрелки</b> — идти<br>
-        <b>Мышь</b> — повернуть камеру (зажать и вести)<br>
-        <b>E</b> — осмотреть светящуюся улику<br>
-        <b>J</b> — журнал · <b>T</b> — таблица
-      </div>
-    </div>
+    <button class="panel" id="helpToggle" title="Открыть подсказку по управлению">
+      <span class="lbl">Как играть</span>
+      <span class="val" style="font-size:.95em">?</span>
+    </button>
   </div>
 </div>
 
@@ -406,7 +438,9 @@ const STATE = {
   elementsKnown: {},       // символ -> true
   skills: {},              // навык -> true
   playerName: 'Исследователь',
-  saved: null
+  saved: null,
+  /* --- командный режим --- */
+  team: null               // null | { kind:'local'|'online', part:1|2, active:boolean, peers:[] }
 };
 
 const SAVE_KEY = 'chemAcademy.save.v1';
@@ -746,6 +780,23 @@ function makeCharacter(opts){
   g.userData.anim = { t: Math.random()*6, walk:0, talking:0, expression:'neutral', blink:0, blinkT: rand(1.5,4) };
   g.userData.baseSkin = skin;
   return g;
+}
+
+/* поворот объекта к углу с учётом перехода через ±π */
+function angLerp(a, b, t){
+  let d = b - a;
+  while (d >  Math.PI) d -= Math.PI*2;
+  while (d < -Math.PI) d += Math.PI*2;
+  return a + d*t;
+}
+/* нормализуем угол в диапазон (−π, π] — для проверок и сравнений */
+function normAng(a){
+  while (a >  Math.PI) a -= Math.PI*2;
+  while (a <= -Math.PI) a += Math.PI*2;
+  return a;
+}
+function faceAngle(obj, targetYaw, dt, speed){
+  obj.rotation.y = angLerp(obj.rotation.y, targetYaw, 1-Math.exp(-(speed||12)*dt));
 }
 
 /* выражение лица */
@@ -1116,29 +1167,37 @@ function unstickPlayer(){
   }
 }
 function movePlayer(dt){
-  let ix = 0, iz = 0;
-  if (keys['a'] || keys['arrowleft']) ix -= 1;
-  if (keys['d'] || keys['arrowright']) ix += 1;
-  if (keys['w'] || keys['arrowup']) iz -= 1;     // «вперёд» — вглубь комнаты
-  if (keys['s'] || keys['arrowdown']) iz += 1;   // «назад» — к камере
-  if (touchMove.active){ ix += touchMove.x; iz += touchMove.y; }
+  /* Ввод: moveForward — идти «вперёд» по экрану, moveRight — «вправо» по экрану. */
+  let moveForward = 0, moveRight = 0;
+  if (keys['w'] || keys['arrowup'])    moveForward += 1;
+  if (keys['s'] || keys['arrowdown'])  moveForward -= 1;
+  if (keys['d'] || keys['arrowright']) moveRight += 1;
+  if (keys['a'] || keys['arrowleft'])  moveRight -= 1;
+  if (touchMove.active){ moveRight += touchMove.x; moveForward -= touchMove.y; }
 
-  const len = Math.hypot(ix,iz);
+  const len = Math.hypot(moveRight, moveForward);
   let moved = false;
   if (len > 0.05){
-    ix /= len; iz /= len;
-    /* Камера смотрит со стороны +Z в сторону −Z.
-       Значит «вперёд» (iz = −1) должно вести в −Z, «вправо» (ix = +1) — в +X. */
-    const wx = ix;
-    const wz = iz;
+    moveRight /= len; moveForward /= len;
+
+    /* Направления относительно КАМЕРЫ.
+       Камера стоит позади игрока под углом cam.yaw и смотрит на него.
+       forward = (sin yaw, cos yaw), right = (-cos yaw, sin yaw). */
+    const fx = Math.sin(cam.yaw), fz = Math.cos(cam.yaw);
+    const rx = -Math.cos(cam.yaw), rz = Math.sin(cam.yaw);
+    const wx = fx*moveForward + rx*moveRight;
+    const wz = fz*moveForward + rz*moveRight;
+
     const sp = 4.6;
     const nx = player.pos.x + wx*sp*dt;
     const nz = player.pos.z + wz*sp*dt;
     if (canStand(nx, player.pos.z)) player.pos.x = nx;
     if (canStand(player.pos.x, nz)) player.pos.z = nz;
+
     player.speed = sp; moved = true;
-    if (Math.abs(wx) > 0.01 || Math.abs(wz) > 0.01) player.yaw = Math.atan2(wx, wz);
-    // звук шагов
+    /* поворачиваем персонажа лицом туда, куда идёт */
+    player.yaw = normAng(Math.atan2(wx, wz));
+
     player._step = (player._step||0) + dt*sp;
     if (player._step > 2.4){ player._step = 0; SFX.step(); }
   } else {
@@ -1223,10 +1282,18 @@ function buildMentor(){
 /* ============================================================================
    ВЗАИМОДЕЙСТВИЕ
    ============================================================================ */
+function inMyPart(it){
+  /* В командном режиме каждый участник осматривает только свои объекты. */
+  const t = STATE.team;
+  if (!t || !t.active) return true;
+  const list = TEAM.localParts[t.part] || [];
+  return list.indexOf(it.id) >= 0;
+}
 function nearestInteractable(){
   let best = null, bd = 2.6;
   for (const it of interactables){
     if (it.used) continue;
+    if (!inMyPart(it)) continue;
     const d = Math.hypot(player.pos.x-it.pos.x, player.pos.z-it.pos.z);
     if (d < bd){ bd = d; best = it; }
   }
@@ -1240,7 +1307,11 @@ function doInteract(){
   if (STATE.mode !== 'playing') return;
   const it = nearestInteractable();
   if (it){ inspect(it); return; }
-  if (nearestTalk()){ talkToMentor(); return; }
+  if (nearestTalk()){
+    /* в командном режиме к наставнику подходят за передачей хода */
+    if (STATE.team && STATE.team.active && !teamWorkDone()){ teamPassTurn(); return; }
+    talkToMentor(); return;
+  }
 }
 function inspect(it){
   it.used = true;
@@ -1274,9 +1345,24 @@ function inspect(it){
     STATE.clueCount++;
     saveGame();
     toast('Улика найдена: ' + clue.title, 2100);
+    /* в сетевой игре сообщаем партнёру */
+    if (STATE.team && STATE.team.kind === 'online') netSend({ type:'clue', id: it.id });
   }
   updateHud();
   if (dialogKey) playDialog(DIALOGS[dialogKey]);
+  /* командный режим: когда свои улики собраны — предложить передать ход */
+  if (STATE.team && STATE.team.active && teamWorkDone()){
+    setTimeout(()=>{
+      if (STATE.team.kind === 'online'){
+        netSend({ type:'ready' });
+        toast('Ваши улики собраны. Партнёр тоже должен собрать свои.', 3200);
+        if (otherPartCluesFound()) startTeamTasks();
+      } else {
+        toast('Ваши улики собраны. Подойдите к наставнику, чтобы передать ход', 3400);
+      }
+    }, 2200);
+    return;
+  }
   if (STATE.clueCount >= MISSIONS.m1.cluesTotal) setTimeout(onAllClues, 2400);
 }
 function talkToMentor(){
@@ -1300,7 +1386,40 @@ function updateHud(){
   const know = Object.keys(STATE.terms).length + Object.keys(STATE.elementsKnown).length;
   $('knowCount').textContent = know;
 }
-function showHud(on){ $('hud').classList.toggle('on', !!on); }
+function showHud(on){ $('hud').classList.toggle('on', !!on); bindHelpButton(); }
+
+/* ---------- кнопка «Как играть»: раскрывает подробную справку ---------- */
+let helpOpen = false;
+function toggleHelp(){
+  helpOpen = !helpOpen;
+  const old = $('helpPanel2');
+  if (old) old.remove();
+  if (!helpOpen) return;
+  const p = document.createElement('div');
+  p.id = 'helpPanel2';
+  p.innerHTML =
+     '<h4>Как играть</h4>'
+    +'<div class="krow"><b>W A S D</b><span>идти. <b style="background:none;color:inherit;padding:0">W</b> — вперёд, '
+    +  '<b style="background:none;color:inherit;padding:0">S</b> — назад, <b style="background:none;color:inherit;padding:0">A</b>/<b style="background:none;color:inherit;padding:0">D</b> — влево/вправо. Стрелки работают так же.</span></div>'
+    +'<div class="krow"><b>Мышь</b><span>повернуть камеру: зажми левую кнопку и веди в сторону. '
+    +  'Персонаж всегда поворачивается туда, куда идёт, а «вперёд» — это всегда «вперёд по экрану».</span></div>'
+    +'<div class="krow"><b>E</b><span>осмотреть объект рядом или поговорить с наставником.</span></div>'
+    +'<div class="krow"><b>J</b><span>журнал расследования: улики, термины, навыки.</span></div>'
+    +'<div class="krow"><b>T</b><span>Архив элементов: таблица и тренировка символов.</span></div>'
+    +'<div class="krow"><b>Esc</b><span>пауза.</span></div>'
+    +'<div class="tip"><b>Где искать улики:</b> у каждой горит неоновое кольцо, идёт столб света '
+    +  'и парит белая стрелка. Подойди и нажми E. Собери все улики, потом подойди к наставнику.</div>'
+    +'<div class="tip">На телефоне — джойстик слева, кнопки E / Журнал / Таблица справа.</div>'
+    +'<button class="closeHelp" id="helpClose">ПОНЯТНО</button>';
+  document.body.appendChild(p);   // отдельный слой поверх, не перекрывает диалоги
+  const cb = $('helpClose');
+  if (cb) cb.onclick = ()=>{ helpOpen = false; const e=$('helpPanel2'); if (e) e.remove(); };
+}
+/* привязываем напрямую к кнопке — надёжнее делегирования */
+function bindHelpButton(){
+  const ht = $('helpToggle');
+  if (ht) ht.onclick = function(e){ if (e && e.preventDefault) e.preventDefault(); toggleHelp(); };
+}
 
 /* оверлей-слои */
 const uiRoot = $('ui');
@@ -1314,6 +1433,16 @@ function openSheet(html){
   return m;
 }
 function closeSheet(){ clearUI(); }
+function showSheet(html){ return openSheet(html); }
+function resetPlayerToStart(){
+  player.pos.set(0, 0, 1.2);
+  player.yaw = Math.PI;
+  player.obj.position.copy(player.pos);
+  player.obj.rotation.y = player.yaw;
+  cam.yaw = Math.PI;
+  cam.pitch = 0.30;
+  updateCamera(1);
+}
 
 /* ============================================================================
    ЗАДАНИЯ
@@ -1580,8 +1709,312 @@ function finishTasks(){
 }
 
 /* ============================================================================
-   ЭКРАН ЗАВЕРШЕНИЯ МИССИИ
+   КОМАНДНЫЕ РЕЖИМЫ
+   local  — вдвоём за одним устройством, ход передаётся по очереди
+   online — двое в разных местах, соединение напрямую между браузерами (WebRTC)
+   Улики делятся между участниками; в конце каждый отвечает на свой вопрос.
    ============================================================================ */
+
+/* ---- общее ---- */
+function teamWorkDone(){
+  const t = STATE.team; if (!t) return false;
+  const mine = TEAM.localParts[t.part] || [];
+  return mine.every(id => {
+    const it = interactables.find(x => x.id === id);
+    return !it || it.used;
+  });
+}
+function otherPartCluesFound(){
+  const t = STATE.team; if (!t) return false;
+  const other = TEAM.localParts[t.part === 1 ? 2 : 1] || [];
+  return other.every(id => {
+    const it = interactables.find(x => x.id === id);
+    return !it || it.used;
+  });
+}
+
+/* ---- ЛОКАЛЬНЫЙ РЕЖИМ ---- */
+function startLocalTeam(part){
+  if (part === 1){
+    STATE.team = { kind:'local', part:1, active:true, peers:[] };
+    clearSave();
+    STATE.clues = {}; STATE.clueCount = 0; STATE.tasksDone = []; STATE.taskIndex = 0;
+    STATE.terms = {}; STATE.elementsKnown = {}; STATE.skills = {};
+    saveGame();
+    startPlaying();
+    setTimeout(()=> playDialog(DIALOGS.team_intro), 350);
+    setTimeout(()=> toast('Игрок 1 осматривает: стол с образцами и журнал', 3200), 2600);
+    return;
+  }
+  /* передача хода игроку 2 */
+  STATE.team.part = 2;
+  resetPlayerToStart();
+  closeSheet();
+  STATE.mode = 'playing';
+  showHud(true);
+  setTimeout(()=> toast('Ход перешёл Игроку 2: шкаф, полка, плакат', 3200), 300);
+}
+function teamPassTurn(){
+  const t = STATE.team;
+  if (!t){ return; }
+  if (!teamWorkDone()){
+    playDialog([{ who:'Наставник', text:'Сначала осмотри свои улики — они отмечены кольцом. Потом передашь ход.' }]);
+    return;
+  }
+  if (t.part === 1){
+    if (!otherPartCluesFound()){
+      showSheet(
+        '<h2>Передать ход Игроку 2</h2>'
+        + '<p>Вы собрали свои улики. Передайте устройство второму участнику — '
+        + 'у него свои объекты: <b>шкаф с реактивами, полка и плакат с правилами</b>.</p>'
+        + '<button class="btn blue" id="tp">Я передал — продолжить</button>'
+      );
+      $('tp').onclick = ()=> startLocalTeam(2);
+      return;
+    }
+  }
+  /* оба собрали — к заданиям */
+  startTeamTasks();
+}
+function startTeamTasks(){
+  STATE.mode = 'task';
+  STATE.taskIndex = 0;
+  renderTeamTask();
+}
+function renderTeamTask(){
+  const t = STATE.team;
+  /* показываем задания по очереди, затем командный вывод и личные вопросы */
+  const order = MISSIONS.m1.taskOrder;
+  if (STATE.taskIndex < order.length){
+    currentTask = TASKS[order[STATE.taskIndex]];
+    STATE.wrongTries = 0;
+    renderTask(currentTask);
+    return;
+  }
+  if (STATE.taskIndex === order.length){
+    /* командный вывод */
+    showTeamConclusion();
+    return;
+  }
+  showIndividualQuestions();
+}
+function showTeamConclusion(){
+  const q = TEAM.teamQuestion;
+  showSheet(
+    '<h1>Общий <span class="accent">вывод</span></h1>'
+    + '<p class="subtitle">Обсудите вдвоём и выберите вывод, подтверждённый уликами.</p>'
+    + '<div class="task-prompt">'+q.text+'</div>'
+    + '<div class="options" id="tq">'
+    + q.options.map(o=>'<div class="opt" data-id="'+o.id+'"><div class="tick">✓</div><div>'+o.text+'</div></div>').join('')
+    + '</div><div id="tqFb"></div>'
+    + '<button class="btn blue" id="tqCheck">Проверить</button>'
+  );
+  let pick = null;
+  uiRoot.querySelectorAll('#tq .opt').forEach(el=>{
+    el.onclick = ()=>{ pick = el.getAttribute('data-id');
+      uiRoot.querySelectorAll('#tq .opt').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); SFX.click(); };
+  });
+  $('tqCheck').onclick = ()=>{
+    if (!pick){ $('tqFb').innerHTML='<div class="feedback bad">Выберите вариант.</div>'; return; }
+    const ok = q.options.find(o=>o.id===pick).correct;
+    if (ok){
+      SFX.good();
+      $('tqFb').innerHTML = '<div class="feedback ok"><div class="ttl">Верно!</div>'+q.explain+'</div>';
+      const b=$('tqCheck'); b.textContent='Дальше →'; b.onclick = ()=>{ STATE.taskIndex++; renderTeamTask(); };
+    } else {
+      SFX.soft();
+      $('tqFb').innerHTML = '<div class="feedback bad"><div class="ttl">Пока не сходится</div>'+q.explain+'<br><b>Попробуйте снова.</b></div>';
+    }
+  };
+}
+function showIndividualQuestions(){
+  /* каждый участник отвечает на свой вопрос — чтобы знание было у обоих */
+  const order = [1,2];
+  let idx = 0;
+  function step(){
+    if (idx >= order.length){ finishTasks(); return; }
+    const part = order[idx];
+    const q = TEAM.individualQuestions[part];
+    showSheet(
+      '<h2>Личный вопрос: Игрок '+part+'</h2>'
+      + '<p class="subtitle">Ответьте сами, без подсказки партнёра.</p>'
+      + '<div class="task-prompt">'+q.text+'</div>'
+      + '<div class="options" id="iq">'
+      + q.options.map(o=>'<div class="opt" data-id="'+o.id+'"><div class="tick">✓</div><div>'+o.text+'</div></div>').join('')
+      + '</div><div id="iqFb"></div>'
+    );
+    let pick=null;
+    uiRoot.querySelectorAll('#iq .opt').forEach(el=>{
+      el.onclick = ()=>{
+        if (pick) return;
+        pick = el.getAttribute('data-id');
+        el.classList.add('sel');
+        const ok = q.options.find(o=>o.id===pick).correct;
+        uiRoot.querySelectorAll('#iq .opt').forEach(x=>x.style.pointerEvents='none');
+        uiRoot.querySelectorAll('#iq .opt').forEach(x=>{
+          if (q.options.find(o=>o.id===x.getAttribute('data-id')).correct) x.classList.add('ok');
+        });
+        if (ok) SFX.good(); else SFX.soft();
+        $('iqFb').innerHTML = '<div class="feedback '+(ok?'ok':'bad')+'"><div class="ttl">'
+          + (ok?'Верно!':'Правильный ответ выделен зелёным') + '</div>'+q.explain+'</div>'
+          + '<button class="btn blue small" id="iqNext">Дальше</button>';
+        $('iqNext').onclick = ()=>{ idx++; step(); };
+      };
+    });
+  }
+  step();
+}
+
+/* ---- СЕТЕВОЙ РЕЖИМ (WebRTC, соединение напрямую) ---- */
+let rtc = null;
+function showOnlineMenu(){
+  STATE.mode = 'menu';
+  showSheet(
+    '<h2>Игра по сети</h2>'
+    + '<p class="subtitle">Двое игроков в разных местах. Улики делятся между вами, '
+    + 'в конце каждый отвечает на свой вопрос.</p>'
+    + '<div class="modes" style="grid-template-columns:1fr 1fr">'
+    +   '<div class="mode" id="onCreate"><div class="ic">➕</div><b>Создать комнату</b>'
+    +     '<i>Вы получите код. Отправьте его партнёру.</i></div>'
+    +   '<div class="mode" id="onJoin"><div class="ic">🔗</div><b>Подключиться</b>'
+    +     '<i>Введите код, который прислал партнёр.</i></div>'
+    + '</div>'
+    + '<div id="onArea"></div>'
+    + '<button class="btn ghost" id="onBack">Назад</button>'
+  );
+  $('onBack').onclick = showMenu;
+  $('onCreate').onclick = onlineCreate;
+  $('onJoin').onclick = onlineJoinPrompt;
+}
+function rtcSupported(){
+  return typeof RTCPeerConnection !== 'undefined';
+}
+function onlineCreate(){
+  if (!rtcSupported()){
+    $('onArea').innerHTML = '<div class="feedback bad">Этот браузер не поддерживает соединение между браузерами. '
+      + 'Попробуйте Chrome или Edge, либо играйте вдвоём за одним экраном.</div>';
+    return;
+  }
+  $('onArea').innerHTML = '<p>Готовим комнату…</p>';
+  try{
+    rtc = new RTCPeerConnection({ iceServers:[{ urls:'stun:stun.l.google.com:19302' }] });
+    rtc.oniceconnectionstatechange = ()=>{ /* статус ниже */ };
+    const dc = rtc.createDataChannel('chem');
+    wireDataChannel(dc);
+    rtc.createOffer().then(off => rtc.setLocalDescription(off)).then(()=>{
+      waitForIce(()=>{
+        const code = btoa(unescape(encodeURIComponent(JSON.stringify(rtc.localDescription))));
+        $('onArea').innerHTML =
+          '<h3>Код комнаты</h3>'
+          + '<p>Отправьте этот код партнёру:</p>'
+          + '<textarea id="myCode" readonly style="width:100%;height:96px;font:11px monospace;'
+          + 'border:3px solid #2e2438;border-radius:10px;padding:8px">'+code+'</textarea>'
+          + '<p>Затем вставьте сюда ответный код партнёра:</p>'
+          + '<textarea id="peerCode" placeholder="ответный код" style="width:100%;height:96px;'
+          + 'font:11px monospace;border:3px solid #2e2438;border-radius:10px;padding:8px"></textarea>'
+          + '<button class="btn blue" id="accept">Подключиться</button>'
+          + '<div id="onStatus"></div>';
+        $('accept').onclick = ()=>{
+          try{
+            const desc = JSON.parse(decodeURIComponent(escape(atob($('peerCode').value.trim()))));
+            rtc.setRemoteDescription(desc).then(()=> setStatus('Соединяемся…'));
+          }catch(e){ setStatus('Не получилось прочитать код. Проверьте, что скопировали полностью.', true); }
+        };
+      });
+    }).catch(()=> setStatus('Не удалось создать комнату.', true));
+  }catch(e){ setStatus('Соединение недоступно в этом браузере.', true); }
+}
+function onlineJoinPrompt(){
+  $('onArea').innerHTML =
+    '<h3>Подключение</h3>'
+    + '<p>Вставьте код, который прислал партнёр:</p>'
+    + '<textarea id="hostCode" placeholder="код комнаты" style="width:100%;height:96px;'
+    + 'font:11px monospace;border:3px solid #2e2438;border-radius:10px;padding:8px"></textarea>'
+    + '<button class="btn blue" id="joinGo">Подключиться</button>'
+    + '<div id="onStatus"></div>';
+  $('joinGo').onclick = ()=>{
+    if (!rtcSupported()){ setStatus('Браузер не поддерживает соединение.', true); return; }
+    try{
+      const desc = JSON.parse(decodeURIComponent(escape(atob($('hostCode').value.trim()))));
+      rtc = new RTCPeerConnection({ iceServers:[{ urls:'stun:stun.l.google.com:19302' }] });
+      rtc.ondatachannel = (ev)=> wireDataChannel(ev.channel);
+      rtc.setRemoteDescription(desc).then(()=> rtc.createAnswer())
+        .then(ans => rtc.setLocalDescription(ans))
+        .then(()=> waitForIce(()=>{
+          const code = btoa(unescape(encodeURIComponent(JSON.stringify(rtc.localDescription))));
+          $('onArea').innerHTML =
+            '<h3>Ответный код</h3>'
+            + '<p>Отправьте этот код партнёру:</p>'
+            + '<textarea readonly style="width:100%;height:96px;font:11px monospace;'
+            + 'border:3px solid #2e2438;border-radius:10px;padding:8px">'+code+'</textarea>'
+            + '<div id="onStatus"></div>';
+          setStatus('Ждём, пока партнёр вставит ваш ответный код…');
+        }))
+        .catch(()=> setStatus('Не получилось прочитать код комнаты.', true));
+    }catch(e){ setStatus('Не получилось прочитать код комнаты.', true); }
+  };
+}
+function waitForIce(cb){
+  if (rtc.iceGatheringState === 'complete'){ cb(); return; }
+  let done = false;
+  const finish = ()=>{ if (!done){ done = true; cb(); } };
+  rtc.addEventListener('icegatheringstatechange', ()=>{ if (rtc.iceGatheringState === 'complete') finish(); });
+  setTimeout(finish, 2500);   // не ждём бесконечно
+}
+function setStatus(text, isError){
+  const el = $('onStatus');
+  if (!el) return;
+  el.innerHTML = '<div class="feedback '+(isError?'bad':'ok')+'" style="margin-top:10px">'+text+'</div>';
+}
+let myPart = 1;
+function wireDataChannel(dc){
+  dc.onopen = ()=>{
+    STATE.team = { kind:'online', part: myPart, active:true, peers:[dc] };
+    clearSave();
+    STATE.clues = {}; STATE.clueCount = 0; STATE.tasksDone = []; STATE.taskIndex = 0;
+    STATE.terms = {}; STATE.elementsKnown = {}; STATE.skills = {};
+    saveGame();
+    startPlaying();
+    setTimeout(()=> playDialog(DIALOGS.team_intro), 350);
+    toast(myPart === 1 ? 'Вы осматриваете: стол с образцами и журнал'
+                       : 'Вы осматриваете: шкаф, полку и плакат', 3400);
+  };
+  dc.onmessage = (ev)=>{
+    let msg = null;
+    try{ msg = JSON.parse(ev.data); }catch(e){ return; }
+    handleNet(msg);
+  };
+}
+/* сообщения: улика найдена, ход передан, вывод готов */
+function netSend(msg){
+  const t = STATE.team;
+  if (!t || !t.peers || !t.peers.length) return;
+  const s = JSON.stringify(msg);
+  t.peers.forEach(dc=>{ try{ if (dc.readyState === 'open') dc.send(s); }catch(e){} });
+}
+function handleNet(msg){
+  if (!msg || !STATE.team) return;
+  if (msg.type === 'clue'){
+    /* партнёр нашёл свою улику */
+    const it = interactables.find(x=>x.id===msg.id);
+    if (it && !it.used){
+      it.used = true;
+      if (it.ring) it.ring.visible = false;
+      if (it.glowRing) it.glowRing.visible = false;
+      if (it.beam) it.beam.visible = false;
+      if (it.arrow) it.arrow.visible = false;
+      if (it.lamp) it.lamp.intensity = 0;
+    }
+    if (!STATE.clues[it.clue]){ STATE.clues[it.clue]=true; STATE.clueCount++; }
+    updateHud();
+    toast('Партнёр нашёл улику: ' + CLUES[it.clue].title, 2600);
+  }
+  else if (msg.type === 'ready'){
+    toast('Партнёр собрал свои улики', 2600);
+    if (teamWorkDone()) startTeamTasks();
+  }
+}
+
 function showMissionDone(){
   SFX.finish();
   const terms = Object.keys(STATE.terms);
@@ -1690,8 +2123,10 @@ function showElementCard(sym){
   area.innerHTML = '<div class="elcard">'
     + '<div class="bigsym">'+e.sym+'</div>'
     + '<div class="row"><span>Название</span><b>'+e.ru+'</b></div>'
+    + '<div class="row"><span>Произношение символа</span><b>'+e.say+'</b></div>'
     + '<div class="row"><span>Порядковый номер</span><b>'+e.z+'</b></div>'
     + '<div class="row"><span>Группа</span><b>'+e.group+'</b></div>'
+    + (e.mustKnow?'<div class="row"><span>В программе 8 класса</span><b>да</b></div>':'')
     + '<div class="row"><span>Факт</span><b style="max-width:60%;text-align:right">'+e.fact+'</b></div>'
     + '<div class="row"><span>Встречался в деле</span><b>'+(known?'да':'пока нет')+'</b></div>'
     + (known?'':'<div style="margin-top:10px"><button class="btn mint small" id="btnMarkKnown">Отметить как изученный</button></div>')
@@ -1713,24 +2148,34 @@ function archiveTrain(){
   return html;
 }
 function makeTrainQuestion(){
-  // чередуем типы: символ→название и название→символ
-  const pool = ELEMENTS.filter(e=> STATE.elementsKnown[e.sym]);
-  const useKnown = pool.length >= 4 && Math.random() < 0.5;
-  const src = useKnown ? pool : ELEMENTS;
+  /* Три вида тренировки, как просит учебник:
+     1) символ → название
+     2) название → символ
+     3) символ → произношение
+     Предпочитаем обязательные для 8 класса элементы. */
+  const must = ELEMENTS.filter(e=>e.mustKnow);
+  const known = ELEMENTS.filter(e=> STATE.elementsKnown[e.sym]);
+  const useKnown = known.length >= 4 && Math.random() < 0.5;
+  const src = useKnown ? known : must;
   const target = src[Math.floor(Math.random()*src.length)];
-  const kindSym = Math.random() < 0.5;
+  const kind = Math.floor(Math.random()*3);   // 0 символ→название, 1 название→символ, 2 символ→произношение
   const others = shuffle(src.filter(e=>e.sym!==target.sym)).slice(0,3);
   const opts = shuffle([target, ...others]).map(e=>({
-    id:e.sym, text: kindSym ? e.ru : e.sym
+    id: e.sym,
+    text: kind === 0 ? e.ru : (kind === 1 ? e.sym : e.say)
   }));
-  return {
-    sym: target.sym,
-    title: kindSym
-      ? 'Как называется элемент <b>'+target.sym+'</b>?'
-      : 'Какой символ у элемента <b>'+target.ru+'</b>?',
-    correct: target.sym,
-    options: opts
-  };
+  /* убираем возможные повторы текстов */
+  const uniq = [];
+  for (const o of opts){ if (!uniq.some(u=>u.text===o.text)) uniq.push(o); }
+  while (uniq.length < 3){
+    const extra = shuffle(must.filter(e=> e.sym!==target.sym && !uniq.some(u=>u.text===(kind===0?e.ru:(kind===1?e.sym:e.say)))))[0];
+    if (!extra) break;
+    uniq.push({ id: extra.sym, text: kind===0?extra.ru:(kind===1?extra.sym:extra.say) });
+  }
+  const title = kind === 0 ? 'Как называется элемент <b>'+target.sym+'</b>?'
+             : kind === 1 ? 'Какой символ у элемента <b>'+target.ru+'</b>?'
+             : 'Как произносится символ <b>'+target.sym+'</b>?';
+  return { sym: target.sym, title, correct: target.sym, options: uniq };
 }
 function bindTrain(){
   uiRoot.querySelectorAll('[data-ans]').forEach(el=>{
@@ -1823,11 +2268,15 @@ function showMenu(){
     + 'Вы — юный исследователь. Изучайте химию и раскрывайте тайны академии.</p>'
     + '<div class="modes">'
     +   '<div class="mode" id="mNew"><div class="ic">🔎</div><b>Новая игра</b>'
-    +     '<i>Глава 1: введение в лабораторию. Пропавший образец.</i></div>'
+    +     '<i>Глава I учебника: первоначальные химические понятия. Дело «Пропавший образец».</i></div>'
     +   '<div class="mode'+(cont?'':' locked')+'" id="mCont"><div class="ic">📖</div><b>Продолжить</b>'
     +     '<i>'+(cont ? ('Найдено улик: '+(save.clueCount||0)+', заданий: '+((save.tasksDone||[]).length)) : 'Сохранения пока нет')+'</i></div>'
+    +   '<div class="mode" id="mLocal"><div class="ic">👥</div><b>Вдвоём за одним экраном</b>'
+    +     '<i>Улики делятся между двумя игроками, управление передаётся по очереди.</i></div>'
+    +   '<div class="mode" id="mOnline"><div class="ic">🌐</div><b>Игра по сети</b>'
+    +     '<i>Двое в разных местах: создайте комнату или подключитесь по коду.</i></div>'
     +   '<div class="mode" id="mArch"><div class="ic">🧪</div><b>Архив элементов</b>'
-    +     '<i>Периодическая таблица и тренировка символов.</i></div>'
+    +     '<i>Таблица Д. И. Менделеева и тренировка символов с произношением.</i></div>'
     + '</div>'
     + '<h3>Главы курса</h3>'
     + '<div class="journal-list">'
@@ -1854,6 +2303,8 @@ function showMenu(){
   );
   $('mNew').onclick = ()=>{ audio(); startNew(); };
   if (cont) $('mCont').onclick = ()=>{ audio(); continueGame(); };
+  $('mLocal').onclick = ()=>{ audio(); startLocalTeam(1); };
+  $('mOnline').onclick = ()=>{ audio(); showOnlineMenu(); };
   $('mArch').onclick = ()=>{ audio(); openArchive(); };
   $('mSettings').onclick = ()=> showSettings();
 }
@@ -2090,6 +2541,7 @@ function update(dt){
   if (STATE.mode === 'playing'){
     const moved = movePlayer(dt);
     animateChar(player.obj, dt, { moving: moved, speed: player.speed });
+    faceAngle(player.obj, player.yaw, dt, 12);      // поворот лицом по ходу движения
     const near = nearestTalk();          // объявляем здесь — нужно и ниже
     if (mentor){
       const lookAt = near ? player.pos : null;
@@ -2171,11 +2623,16 @@ if (location.hash === '#debug'){
   window.__chem = {
     STATE, SETTINGS, TASKS, ELEMENTS, CHAPTERS, MISSIONS, DIALOGS,
     CLUES, INTERACTABLES, CHAPTER1_ELEMENTS,
+    TEAM, MUST_KNOW_ELEMENTS,
     startNew, continueGame, startPlaying, startTaskSequence, runTask, checkCurrent,
     openArchive, openJournal, showMissionDone, inspect, doInteract,
+    showHud, toggleHelp, startLocalTeam, showOnlineMenu,
     setExpression, makeTrainQuestion,
     scene: ()=>scene, player, mentor: ()=>mentor,
     interactables: ()=>interactables,
+    setCamYaw: v => { cam.yaw = v; },
+    getCamYaw: ()=> cam.yaw,
+    setCamPitch: v => { cam.pitch = v; },
     findInteractable: id => interactables.find(i=>i.id===id),
     forceClues: ()=>{ interactables.forEach(i=>{ if(!STATE.clues[i.clue]){ STATE.clues[i.clue]=true; STATE.clueCount++; i.used=true; } }); updateHud(); },
     answerCurrent: correct => {
