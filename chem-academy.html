@@ -353,10 +353,13 @@
       <div class="lbl">Знания</div>
       <div class="val" id="knowCount">0</div>
     </div>
-    <div class="panel">
-      <div class="lbl">Подсказка</div>
-      <div class="val" style="font-size:.85em">
-        <b>E</b> — осмотреть · <b>J</b> — журнал · <b>T</b> — таблица
+    <div class="panel" id="helpPanel">
+      <div class="lbl">Как играть</div>
+      <div class="val" style="font-size:.82em;line-height:1.5">
+        <b>W A S D</b> или <b>стрелки</b> — идти<br>
+        <b>Мышь</b> — повернуть камеру (зажать и вести)<br>
+        <b>E</b> — осмотреть светящуюся улику<br>
+        <b>J</b> — журнал · <b>T</b> — таблица
       </div>
     </div>
   </div>
@@ -931,7 +934,7 @@ function buildLab(){
     }
     // горелка
     grp.add(mesh(new THREE.CylinderGeometry(0.1,0.14,0.24,10), MAT.metal, 0.9, 1.24, 0.35));
-    colliders.push({ x:tx, z:tz, r:Math.max(tw,td)*0.42 });
+    colliders.push({ type:'rect', x:tx, z:tz, hw:tw/2, hd:td/2 });
   });
 
   /* шкаф (у правой стены) */
@@ -941,7 +944,7 @@ function buildLab(){
   cup.add(mesh(new THREE.BoxGeometry(0.14,3.2,2.6), MAT.glass, -1.02, 2.1, 0));
   cup.add(mesh(new THREE.BoxGeometry(0.2,0.16,0.5), MAT.dark, -1.1, 2.0, 0.9));
   cup.add(mesh(new THREE.BoxGeometry(0.2,0.16,0.5), MAT.dark, -1.1, 2.0, -0.9));
-  colliders.push({ x:11.6, z:0, r:1.9 });
+  colliders.push({ type:'rect', x:11.6, z:0, hw:1.0, hd:1.7 });
 
   /* полка (у левой стены) */
   const sh = new THREE.Group(); sh.position.set(-11.8, 0, 3.2);
@@ -954,7 +957,7 @@ function buildLab(){
   sh.add(mesh(new THREE.CylinderGeometry(0.24,0.24,0.5,14), MAT.glass, 0.1, 1.78, -1.1));
   sh.add(mesh(new THREE.CylinderGeometry(0.24,0.24,0.5,14), MAT.glass, 0.1, 2.78, -0.1));
   sh.add(mesh(new THREE.CylinderGeometry(0.24,0.24,0.5,14), MAT.glass, 0.1, 2.78, 1.2));
-  colliders.push({ x:-11.8, z:3.2, r:1.6 });
+  colliders.push({ type:'rect', x:-11.8, z:3.2, hw:0.7, hd:2.0 });
 
   /* плакат с правилами на дальней стене */
   const poster = new THREE.Group(); poster.position.set(-3.4, 0, -hd+0.3);
@@ -984,7 +987,7 @@ function buildLab(){
   worldGroup.add(demo);
   demo.add(mesh(new THREE.CylinderGeometry(0.7,0.9,1.1,16), MAT.table, 0, 0.55, 0));
   demo.add(mesh(new THREE.CylinderGeometry(0.34,0.28,0.6,14), MAT.glass, 0, 1.4, 0));
-  colliders.push({ x:0, z:-6.4, r:1.1 });
+  colliders.push({ type:'rect', x:0, z:-6.4, hw:0.9, hd:0.9 });
 
   /* растения для уюта */
   [[-12.4,-6.6],[12.2,7.4]].forEach(p=>{
@@ -1012,19 +1015,58 @@ function buildLab(){
       new THREE.MeshStandardMaterial({ color:def.color, roughness:0.6 }), 0, h/2, 0);
     grp.add(body);
 
-    // мягкая подсветка-подсказка (не пересвечивает сцену)
-    const halo = mesh(new THREE.SphereGeometry(Math.max(w,d)*0.5, 12, 10),
-      new THREE.MeshBasicMaterial({ color:PAL.accent2, transparent:true, opacity:0.10,
-        blending:THREE.AdditiveBlending, depthWrite:false }), 0, h*0.55, 0);
-    halo.scale.set(1, 0.7, 1);
-    grp.add(halo);
+    // заметный маркер: неоновое кольцо у основания + стрелка-указатель сверху
+    const accent = PAL.accent2;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(Math.max(w,d)*0.62, 0.075, 8, 28),
+      new THREE.MeshBasicMaterial({ color:accent, transparent:true, opacity:0.95 })
+    );
+    ring.rotation.x = Math.PI/2;
+    ring.position.y = 0.09;
+    grp.add(ring);
 
-    interactables.push({ id:def.id, label:def.label, clue:def.clue, group:grp, halo, used:false,
+    // мягкое свечение вокруг кольца
+    const glowRing = new THREE.Mesh(
+      new THREE.TorusGeometry(Math.max(w,d)*0.62, 0.24, 8, 28),
+      new THREE.MeshBasicMaterial({ color:accent, transparent:true, opacity:0.22,
+        blending:THREE.AdditiveBlending, depthWrite:false })
+    );
+    glowRing.rotation.x = Math.PI/2;
+    glowRing.position.y = 0.09;
+    grp.add(glowRing);
+
+    // светящийся столб вверх
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(Math.max(w,d)*0.5, Math.max(w,d)*0.58, 2.6, 14, 1, true),
+      new THREE.MeshBasicMaterial({ color:accent, transparent:true, opacity:0.10,
+        side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false })
+    );
+    beam.position.y = 1.4;
+    grp.add(beam);
+
+    // стрелка-указатель, парящая над объектом
+    const arrow = new THREE.Group();
+    const aMat = new THREE.MeshBasicMaterial({ color:0xffffff });
+    const cone = mesh(new THREE.ConeGeometry(0.28, 0.42, 12), aMat, 0, 0, 0);
+    cone.rotation.z = Math.PI;                 // остриём вниз
+    arrow.add(cone);
+    const ball = mesh(new THREE.SphereGeometry(0.11, 10, 8), aMat, 0, 0.42, 0);
+    arrow.add(ball);
+    arrow.position.y = h + 1.5;
+    grp.add(arrow);
+
+    // источник света, чтобы пятно было видно и в тёмных углах
+    const lamp = new THREE.PointLight(accent, 0.85, 7, 2);
+    lamp.position.set(0, h + 1.0, 0);
+    grp.add(lamp);
+
+    interactables.push({ id:def.id, label:def.label, clue:def.clue, group:grp,
+                         ring, glowRing, beam, arrow, lamp, used:false,
                          pos:new THREE.Vector3(def.pos[0], 0, def.pos[2]), data:def });
 
-    // у столов и шкафов — препятствие
+    // у столов и шкафов — препятствие (прямоугольное, по размеру мебели)
     if (def.id !== 'poster'){
-      colliders.push({ x:def.pos[0], z:def.pos[2], r:Math.max(w,d)*0.5 });
+      colliders.push({ type:'rect', x:def.pos[0], z:def.pos[2], hw:w/2, hd:d/2 });
     }
   });
 }
@@ -1050,34 +1092,52 @@ function canStand(x,z){
   const hw = ROOM.w/2 - 0.6, hd = ROOM.d/2 - 0.6;
   if (x < -hw || x > hw || z < -hd || z > hd) return false;
   for (const c of colliders){
-    const d = Math.hypot(x-c.x, z-c.z);
-    if (d < c.r + player.radius) return false;
+    if (c.type === 'rect'){
+      // прямоугольное препятствие (мебель) — точные границы
+      if (x > c.x - c.hw - player.radius && x < c.x + c.hw + player.radius &&
+          z > c.z - c.hd - player.radius && z < c.z + c.hd + player.radius) return false;
+    } else {
+      const d = Math.hypot(x-c.x, z-c.z);
+      if (d < c.r + player.radius) return false;
+    }
   }
   return true;
+}
+/* если игрок каким-то образом оказался внутри препятствия — вытолкнуть его */
+function unstickPlayer(){
+  if (canStand(player.pos.x, player.pos.z)) return;
+  for (let ring = 1; ring <= 26; ring++){
+    for (let i = 0; i < ring*8; i++){
+      const a = i/(ring*8)*Math.PI*2;
+      const nx = player.pos.x + Math.cos(a)*ring*0.22;
+      const nz = player.pos.z + Math.sin(a)*ring*0.22;
+      if (canStand(nx,nz)){ player.pos.x = nx; player.pos.z = nz; return; }
+    }
+  }
 }
 function movePlayer(dt){
   let ix = 0, iz = 0;
   if (keys['a'] || keys['arrowleft']) ix -= 1;
   if (keys['d'] || keys['arrowright']) ix += 1;
-  if (keys['w'] || keys['arrowup']) iz -= 1;
-  if (keys['s'] || keys['arrowdown']) iz += 1;
+  if (keys['w'] || keys['arrowup']) iz -= 1;     // «вперёд» — вглубь комнаты
+  if (keys['s'] || keys['arrowdown']) iz += 1;   // «назад» — к камере
   if (touchMove.active){ ix += touchMove.x; iz += touchMove.y; }
 
   const len = Math.hypot(ix,iz);
   let moved = false;
   if (len > 0.05){
     ix /= len; iz /= len;
-    // движение относительно камеры
-    const cs = Math.cos(cam.yaw), sn = Math.sin(cam.yaw);
-    const wx = ix*cs - iz*sn;
-    const wz = ix*sn + iz*cs;
+    /* Камера смотрит со стороны +Z в сторону −Z.
+       Значит «вперёд» (iz = −1) должно вести в −Z, «вправо» (ix = +1) — в +X. */
+    const wx = ix;
+    const wz = iz;
     const sp = 4.6;
     const nx = player.pos.x + wx*sp*dt;
     const nz = player.pos.z + wz*sp*dt;
     if (canStand(nx, player.pos.z)) player.pos.x = nx;
     if (canStand(player.pos.x, nz)) player.pos.z = nz;
     player.speed = sp; moved = true;
-    player.yaw = Math.atan2(wx, wz);
+    if (Math.abs(wx) > 0.01 || Math.abs(wz) > 0.01) player.yaw = Math.atan2(wx, wz);
     // звук шагов
     player._step = (player._step||0) + dt*sp;
     if (player._step > 2.4){ player._step = 0; SFX.step(); }
@@ -1085,6 +1145,7 @@ function movePlayer(dt){
     player.speed = damp(player.speed, 0, 8, dt);
   }
   player.obj.position.copy(player.pos);
+  unstickPlayer();
   return moved;
 }
 function updateCamera(dt){
@@ -1156,7 +1217,7 @@ function buildMentor(){
   mentor.scale.setScalar(1.06);
   scene.add(mentor);
   setExpression(mentor, 'happy');
-  colliders.push({ x:-1.6, z:1.4, r:0.75 });
+  colliders.push({ type:'circle', x:-1.6, z:1.4, r:0.55 });
 }
 
 /* ============================================================================
@@ -1183,7 +1244,24 @@ function doInteract(){
 }
 function inspect(it){
   it.used = true;
-  it.halo.material.opacity = 0.05;
+  if (it.ring) it.ring.visible = false;
+  if (it.glowRing) it.glowRing.visible = false;
+  if (it.beam) it.beam.visible = false;
+  if (it.arrow) it.arrow.visible = false;
+  if (it.lamp) it.lamp.intensity = 0;
+  // вспышка на месте улики
+  const flash = new THREE.Mesh(
+    new THREE.SphereGeometry(1.6, 16, 12),
+    new THREE.MeshBasicMaterial({ color:PAL.accent2, transparent:true, opacity:0.5,
+      blending:THREE.AdditiveBlending, depthWrite:false })
+  );
+  flash.position.set(it.pos.x, 1.0, it.pos.z);
+  scene.add(flash);
+  let fk = 0;
+  const fade = setInterval(()=>{ fk += 0.1; flash.material.opacity = Math.max(0, 0.5 - fk*0.5);
+    flash.scale.setScalar(1 + fk*1.6);
+    if (fk > 1.2){ clearInterval(fade); scene.remove(flash); flash.geometry.dispose(); flash.material.dispose(); } }, 40);
+
   const clue = CLUES[it.clue];
   const dialogKey = {
     c_samples:'clue_samples', c_logbook:'clue_logbook',
@@ -1798,7 +1876,14 @@ function continueGame(){
   startPlaying();
   // восстанавливаем использованные улики
   interactables.forEach(it=>{
-    if (STATE.clues[it.clue]){ it.used = true; it.halo.material.opacity = 0.05; }
+    if (STATE.clues[it.clue]){
+      it.used = true;
+      if (it.ring) it.ring.visible = false;
+      if (it.glowRing) it.glowRing.visible = false;
+      if (it.beam) it.beam.visible = false;
+      if (it.arrow) it.arrow.visible = false;
+      if (it.lamp) it.lamp.intensity = 0;
+    }
   });
   if (STATE.clueCount >= MISSIONS.m1.cluesTotal) toast('Улики собраны. Поговорите с наставником.', 2600);
 }
@@ -2023,11 +2108,26 @@ function update(dt){
     } else {
       pEl.classList.remove('on');
     }
-    // интерактивные объекты слегка светятся
+    // маркеры улик: пульсация кольца и парящая стрелка
+    const tt = performance.now()*0.001;
     for (const o of interactables){
-      if (o.used) continue;
-      const k = 0.08 + Math.sin(performance.now()*0.002 + o.pos.x)*0.035;
-      o.halo.material.opacity = k;
+      if (o.used){
+        if (o.ring) o.ring.visible = false;
+        if (o.glowRing) o.glowRing.visible = false;
+        if (o.beam) o.beam.visible = false;
+        if (o.arrow) o.arrow.visible = false;
+        if (o.lamp) o.lamp.intensity = 0;
+        continue;
+      }
+      const pulse = 0.5 + 0.5*Math.sin(tt*3 + o.pos.x);
+      if (o.glowRing){ o.glowRing.material.opacity = 0.12 + pulse*0.22; o.glowRing.scale.setScalar(1 + pulse*0.10); }
+      if (o.ring) o.ring.material.opacity = 0.75 + pulse*0.25;
+      if (o.beam) o.beam.material.opacity = 0.05 + pulse*0.09;
+      if (o.arrow){
+        o.arrow.position.y = 2.4 + Math.sin(tt*2.4 + o.pos.x)*0.16;
+        o.arrow.rotation.y = tt*1.2;
+      }
+      if (o.lamp) o.lamp.intensity = 0.6 + pulse*0.5;
     }
   }
   updateCamera(dt);
