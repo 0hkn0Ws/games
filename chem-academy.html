@@ -1381,7 +1381,11 @@ function onAllClues(){
    ИНТЕРФЕЙС: HUD, ЭКРАНЫ
    ============================================================================ */
 function updateHud(){
-  $('objText').textContent = 'Найти улики в лаборатории';
+  $('objText').textContent = (STATE.mode==='done')
+    ? 'Миссия выполнена. Можно осмотреть лабораторию ещё раз или выйти в меню (Esc).'
+    : (STATE.team && STATE.team.active
+        ? 'Ваша часть улик: ' + (TEAM.localParts[STATE.team.part]||[]).join(', ')
+        : 'Найти улики в лаборатории');
   $('clueCount').textContent = STATE.clueCount + ' / ' + MISSIONS.m1.cluesTotal;
   const know = Object.keys(STATE.terms).length + Object.keys(STATE.elementsKnown).length;
   $('knowCount').textContent = know;
@@ -1484,9 +1488,14 @@ function showHint(t){
   }
 }
 function markTerms(t){
-  // записываем термины главы в журнал
-  const ch = CHAPTERS.find(c=>c.id===t.chapter);
-  if (ch) ch.terms.forEach(term => STATE.terms[term]=true);
+  /* В журнал попадают ТОЛЬКО те термины, которые задание действительно отрабатывает.
+     Раньше записывались все термины главы сразу — это было неверно. */
+  const list = t.terms || [];
+  const wasNew = list.filter(term => !STATE.terms[term]);
+  list.forEach(term => { STATE.terms[term] = true; });
+  if (wasNew.length) {
+    setTimeout(()=> toast('В журнал добавлено: ' + wasNew.join(', '), 2600), 600);
+  }
   saveGame();
 }
 
@@ -1594,7 +1603,7 @@ function taskMatch(t){
   t.pairs.forEach(p=>{
     html += '<div class="match-row">'
       + '<div class="match-left">'+p.left+'</div>'
-      + '<select class="match-sel" data-id="'+p.id+'"><option value="">— выбери свойство —</option>';
+      + '<select class="match-sel" data-id="'+p.id+'"><option value="">— выбери из списка —</option>';
     rights.forEach(r=> html += '<option value="'+r+'">'+r+'</option>');
     html += '</select></div>';
   });
@@ -1700,9 +1709,16 @@ function checkCurrent(){
 
 function finishTasks(){
   STATE.mode = 'task';
-  STATE.skills['наблюдение и вывод'] = true;
-  STATE.skills['работа с уликами'] = true;
-  STATE.skills['классификация веществ'] = true;
+  /* Навыки выдаём только за то, что действительно отработано в заданиях главы. */
+  const done = STATE.tasksDone;
+  if (done.indexOf('t1_observe')>=0)  STATE.skills['отличать наблюдение от вывода'] = true;
+  if (done.indexOf('t2_classify')>=0) STATE.skills['различать тело и вещество'] = true;
+  if (done.indexOf('t3_match')>=0)    STATE.skills['определять свойства веществ'] = true;
+  if (done.indexOf('t4_evidence')>=0) STATE.skills['работать с уликами'] = true;
+  if (done.indexOf('t5_rules')>=0)    STATE.skills['соблюдать правила безопасности'] = true;
+  if (done.indexOf('t6_state')>=0)    STATE.skills['определять агрегатное состояние'] = true;
+  if (done.indexOf('t7_symbols')>=0)  STATE.skills['узнавать символы элементов'] = true;
+  if (done.indexOf('t8_conclusion')>=0) STATE.skills['делать вывод по уликам'] = true;
   CHAPTER1_ELEMENTS.forEach(s=> STATE.elementsKnown[s]=true);
   saveGame();
   showMissionDone();
@@ -2019,7 +2035,9 @@ function showMissionDone(){
   SFX.finish();
   const terms = Object.keys(STATE.terms);
   const els = Object.keys(STATE.elementsKnown);
-  const m = openSheet(
+  STATE.mode = 'done';
+  STATE.overlayReturn = showMissionDone;   // куда вернуться, если откроют журнал/архив
+  openSheet(
     '<h1>Миссия <span class="accent">выполнена</span></h1>'
     + '<p class="subtitle">Дело о пропавшем образце закрыто. Вывод подтверждён уликами.</p>'
     + '<div class="stat">'
@@ -2029,26 +2047,69 @@ function showMissionDone(){
     +   '<div><div class="v">'+els.length+'</div><div class="k">элементов</div></div>'
     + '</div>'
     + '<div class="rank">Юный исследователь</div>'
-    + '<h3>Что вы узнали</h3>'
+    + '<h3>Что вы узнали в этой главе</h3>'
     + '<div class="journal-list">'
     +   '<div class="jitem found"><b>Наблюдение и вывод</b>Наблюдение — то, что видно и измеримо. Вывод требует доказательств.</div>'
-    +   '<div class="jitem found"><b>Тело и вещество</b>Тело — предмет (ложка, колба). Вещество — материал (железо, стекло, вода).</div>'
-    +   '<div class="jitem found"><b>Физические свойства</b>Цвет, блеск, состояние, растворимость, притяжение магнитом.</div>'
-    +   '<div class="jitem found"><b>Правила лаборатории</b>Халат, аккуратность, мыть руки, ничего не пробовать на вкус.</div>'
+    +   '<div class="jitem found"><b>Физическое тело и вещество</b>Физическое тело — предмет (пробирка, колба). Вещество — то, из чего он состоит (стекло, железо, вода).</div>'
+    +   '<div class="jitem found"><b>Свойства веществ</b>Цвет, блеск, агрегатное состояние, растворимость, притяжение магнитом.</div>'
+    +   '<div class="jitem found"><b>Агрегатные состояния</b>Газообразное, жидкое, твёрдое — при обычных условиях.</div>'
+    +   '<div class="jitem found"><b>Символы элементов</b>Символы взяты из латинских названий: Fe — феррум, Cu — купрум.</div>'
+    +   '<div class="jitem found"><b>Правила лаборатории</b>Халат, аккуратность, брать вещества шпателем, мыть руки.</div>'
     + '</div>'
     + '<h3>Стоит повторить</h3>'
-    + '<p>Загляните в <b>Архив элементов</b> — там уже отмечены изученные элементы: '
+    + '<p>Загляните в <b>Архив элементов</b> — там отмечены изученные вами элементы: '
     + CHAPTER1_ELEMENTS.join(', ') + '.</p>'
     + '<div style="margin-top:14px">'
     +   '<button class="btn mint" id="btnArchive">Архив элементов</button>'
     +   '<button class="btn blue" id="btnJournal">Журнал</button>'
-    +   '<button class="btn ghost" id="btnMenu">В меню</button>'
+    +   '<button class="btn alt" id="btnContinue">ПРОДОЛЖИТЬ ОСМОТР</button>'
+    +   '<button class="btn" id="btnNextChap">СЛЕДУЮЩАЯ ГЛАВА</button>'
     + '</div>'
+    + '<div style="margin-top:6px"><button class="btn ghost small" id="btnMenu">Выйти в меню</button></div>'
   );
   $('btnArchive').onclick = ()=> openArchive();
   $('btnJournal').onclick = ()=> openJournal();
+  $('btnContinue').onclick = ()=> continueExploring();
+  $('btnNextChap').onclick = ()=> showNextChapterInfo();
   $('btnMenu').onclick = ()=>{ closeSheet(); showMenu(); };
-  STATE.mode = 'done';
+}
+/* главы II–V пока в разработке — честно сообщаем и показываем, что сделано */
+function showNextChapterInfo(){
+  const c2 = CHAPTERS.find(c=>c.id===2);
+  STATE.overlayReturn = showNextChapterInfo;
+  openSheet(
+    '<h2>Глава II. '+(c2?c2.title:'')+'</h2>'
+    + '<p class="subtitle">'+(c2?c2.textbook:'')+'</p>'
+    + '<p>Эта глава <b>ещё в разработке</b>. Сейчас полностью готова только глава I — '
+    + '«Первоначальные химические понятия».</p>'
+    + '<p>Когда глава II будет готова, здесь появится новая миссия: определение вещества '
+    + 'в безымянной колбе по его свойствам.</p>'
+    + '<div style="margin-top:12px">'
+    +   '<button class="btn blue" id="ncJournal">Журнал</button>'
+    +   '<button class="btn ghost" id="ncBack">Назад</button>'
+    +   '<button class="btn dim" id="ncMenu">В меню</button>'
+    + '</div>'
+  );
+  $('ncJournal').onclick = ()=> openJournal();
+  $('ncBack').onclick = ()=> showMissionDone();
+  $('ncMenu').onclick = ()=>{ closeSheet(); showMenu(); };
+}
+/* из любого экрана-итога можно продолжить осмотр или выйти */
+function continueExploring(){
+  closeSheet();
+  STATE.mode = 'playing';
+  showHud(true);
+  bindHelpButton();
+  resetPlayerToStart();
+}
+/* закрываем журнал/архив — возвращаемся туда, откуда пришли */
+function closeOverlayToReturn(){
+  closeSheet();
+  if (STATE.overlayReturn){ const fn = STATE.overlayReturn; STATE.overlayReturn = null;
+    if (fn === showMissionDone || fn === showNextChapterInfo){ fn(); return; } }
+  STATE.mode = 'playing';
+  showHud(true);
+  bindHelpButton();
 }
 
 /* ============================================================================
@@ -2076,7 +2137,7 @@ function renderArchive(){
     + '<div id="elCardArea"></div>'
     + '<div style="margin-top:12px"><button class="btn ghost" id="btnCloseArch">Закрыть</button></div>'
   );
-  $('btnCloseArch').onclick = ()=>{ closeSheet(); if (STATE.mode==='archive'){ STATE.mode = 'playing'; } };
+  $('btnCloseArch').onclick = closeOverlayToReturn;
   uiRoot.querySelectorAll('[data-atab]').forEach(t=>{
     t.onclick = ()=>{ archiveTab = t.getAttribute('data-atab'); SFX.click(); renderArchive(); };
   });
@@ -2226,7 +2287,7 @@ function archiveKnown(){
    ЖУРНАЛ
    ============================================================================ */
 function openJournal(){
-  const prevMode = STATE.mode;
+  if (!STATE.overlayReturn) STATE.overlayReturn = null;
   STATE.mode = 'journal';
   const clues = CLUES;
   let clueHtml = '';
@@ -2251,7 +2312,7 @@ function openJournal(){
                      : '<p>Пока пусто.</p>')
     + '<div style="margin-top:14px"><button class="btn ghost" id="btnCloseJ">Закрыть</button></div>'
   );
-  $('btnCloseJ').onclick = ()=>{ closeSheet(); STATE.mode = (prevMode==='done')?'done':'playing'; };
+  $('btnCloseJ').onclick = closeOverlayToReturn;
 }
 
 /* ============================================================================
@@ -2424,7 +2485,11 @@ window.addEventListener('keydown', e=>{
   if (k==='escape'){
     if (STATE.mode==='playing') showPause();
     else if (STATE.mode==='paused'){ closeSheet(); STATE.mode='playing'; }
-    else if (['archive','journal','settings','done','task'].indexOf(STATE.mode)>=0){ /* закрываем вручную кнопкой */ }
+    else if (STATE.mode==='done'){ STATE.overlayReturn = null; continueExploring(); }
+    else if (STATE.mode==='journal' || STATE.mode==='archive' || STATE.mode==='settings' || STATE.mode==='task'){
+      STATE.overlayReturn = null;
+      continueExploring();
+    }
     return;
   }
   if (STATE.mode==='playing'){
@@ -2626,7 +2691,7 @@ if (location.hash === '#debug'){
     TEAM, MUST_KNOW_ELEMENTS,
     startNew, continueGame, startPlaying, startTaskSequence, runTask, checkCurrent,
     openArchive, openJournal, showMissionDone, inspect, doInteract,
-    showHud, toggleHelp, startLocalTeam, showOnlineMenu,
+    showHud, toggleHelp, startLocalTeam, showOnlineMenu, showNextChapterInfo, continueExploring,
     setExpression, makeTrainQuestion,
     scene: ()=>scene, player, mentor: ()=>mentor,
     interactables: ()=>interactables,
